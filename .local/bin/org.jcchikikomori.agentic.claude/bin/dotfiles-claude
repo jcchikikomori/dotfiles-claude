@@ -8,12 +8,18 @@ set -eu
 # Usage: dotfiles-claude <command> [options]
 #
 # Commands:
+#   check                            Check system requirements
 #   install-mcps [--global|--local]  Install MCPs from registry (default: local)
 #   add-global <mcp-name>            Add MCP to global config (all projects)
 #   add-local <mcp-name>             Add MCP to local config (current project)
 #   list-available                   List MCPs available in shared registry
 #   list                             List currently configured MCPs
 #   sync-from-opencode               Import MCPs from OpenCode config
+#   generate-instructions            Generate CLAUDE.md from shared instructions
+#
+# Requirements:
+#   Essential: claude, (jq OR python3)
+#   Optional: npx, uvx, pipx, docker (for MCP installation)
 
 # Source .profile.local for environment variables (MCP tokens, etc.)
 if [ -f "$HOME/.profile.local" ]; then
@@ -77,6 +83,108 @@ _json_tool() {
     else
         echo "none"
     fi
+}
+
+# ─── Requirements checker ─────────────────────────────────────────────────────
+
+_check_requirements() {
+    check_type="${1:-full}"  # full or minimal
+    has_error=0
+    
+    echo ""
+    echo "[dotfiles-claude] Checking requirements..."
+    echo ""
+    
+    # Essential requirements (fail if missing)
+    echo "  Essential dependencies:"
+    
+    # Check Claude CLI
+    if command -v claude > /dev/null 2>&1; then
+        claude_version=$(claude --version 2>&1 | head -1 || echo "unknown")
+        echo "    ✓ claude        $claude_version"
+    else
+        echo "    ✗ claude        NOT FOUND"
+        echo ""
+        echo "      Claude Code CLI is required. Install from:"
+        echo "      https://docs.anthropic.com/en/docs/claude-code"
+        has_error=1
+    fi
+    
+    # Check JSON parser (jq or python3)
+    json_tool=$(_json_tool)
+    if [ "$json_tool" = "jq" ]; then
+        jq_version=$(jq --version 2>&1 || echo "unknown")
+        echo "    ✓ jq            $jq_version"
+    elif [ "$json_tool" = "python3" ]; then
+        py_version=$(python3 --version 2>&1 | cut -d' ' -f2 || echo "unknown")
+        echo "    ✓ python3       $py_version"
+    else
+        echo "    ✗ jq/python3    NOT FOUND"
+        echo ""
+        echo "      Either jq or python3 is required for JSON parsing."
+        echo "      Install one of:"
+        echo "        • jq:      apt install jq  (or brew install jq)"
+        echo "        • python3: apt install python3  (or brew install python3)"
+        has_error=1
+    fi
+    
+    # Stop here if minimal check or if essentials are missing
+    if [ "$check_type" = "minimal" ] || [ $has_error -eq 1 ]; then
+        echo ""
+        if [ $has_error -eq 1 ]; then
+            echo "  [error] Missing essential dependencies. Please install them first."
+            return 1
+        fi
+        echo "  [ok] All essential dependencies found."
+        return 0
+    fi
+    
+    # Optional dependencies (warn if missing, but don't fail)
+    echo ""
+    echo "  Optional dependencies (for MCP installation):"
+    
+    # Check Node.js/npx
+    if command -v npx > /dev/null 2>&1; then
+        node_version=$(node --version 2>&1 || echo "unknown")
+        echo "    ✓ npx/node      $node_version"
+    else
+        echo "    ⚠ npx/node      NOT FOUND (needed for npx-based MCPs)"
+        echo "                    Install: https://nodejs.org/"
+    fi
+    
+    # Check uv/uvx
+    if command -v uvx > /dev/null 2>&1; then
+        uv_version=$(uv --version 2>&1 | cut -d' ' -f2 || echo "unknown")
+        echo "    ✓ uvx/uv        $uv_version"
+    else
+        echo "    ⚠ uvx/uv        NOT FOUND (needed for uvx-based MCPs)"
+        echo "                    Install: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    fi
+    
+    # Check pipx
+    if command -v pipx > /dev/null 2>&1; then
+        pipx_version=$(pipx --version 2>&1 || echo "unknown")
+        echo "    ✓ pipx          $pipx_version"
+    else
+        echo "    ⚠ pipx          NOT FOUND (needed for pipx-based MCPs)"
+        echo "                    Install: python3 -m pip install --user pipx"
+    fi
+    
+    # Check Docker
+    if command -v docker > /dev/null 2>&1; then
+        docker_version=$(docker --version 2>&1 | cut -d' ' -f3 | tr -d ',' || echo "unknown")
+        echo "    ✓ docker        $docker_version"
+    else
+        echo "    ⚠ docker        NOT FOUND (needed for docker-based MCPs)"
+        echo "                    Install: https://docs.docker.com/get-docker/"
+    fi
+    
+    echo ""
+    echo "  [ok] Essential dependencies satisfied."
+    echo "  [note] Optional dependencies can be installed later as needed."
+    echo ""
+    
+    return 0
 }
 
 # ─── MCP Registry ─────────────────────────────────────────────────────────────
@@ -807,6 +915,7 @@ usage() {
     echo "Usage: dotfiles-claude <command> [options]"
     echo ""
     echo "Commands:"
+    echo "  check                             Check system requirements"
     echo "  install-mcps [--global|--local]   Install MCPs from registry (default: local)"
     echo "  add-global <mcp-name>             Add MCP to global config (all projects)"
     echo "  add-local <mcp-name>              Add MCP to local config (current project)"
@@ -816,6 +925,7 @@ usage() {
     echo "  generate-instructions             Generate CLAUDE.md from shared instructions"
     echo ""
     echo "Examples:"
+    echo "  dotfiles-claude check                     # Check requirements"
     echo "  dotfiles-claude install-mcps              # Install all MCPs locally"
     echo "  dotfiles-claude install-mcps --global     # Install all MCPs globally"
     echo "  dotfiles-claude add-global github         # Add GitHub MCP globally"
@@ -827,7 +937,14 @@ usage() {
 
 # Parse arguments
 case "${1:-}" in
+    check)
+        _check_requirements "full"
+        ;;
     install-mcps)
+        # Check minimal requirements before proceeding
+        if ! _check_requirements "minimal"; then
+            exit 1
+        fi
         # Check for scope flags
         if [ "${2:-}" = "--global" ]; then
             SCOPE="global"
@@ -839,21 +956,49 @@ case "${1:-}" in
         do_install_mcps
         ;;
     add-global)
+        # Check minimal requirements before proceeding
+        if ! _check_requirements "minimal"; then
+            exit 1
+        fi
         do_add_mcp "$2" "global"
         ;;
     add-local)
+        # Check minimal requirements before proceeding
+        if ! _check_requirements "minimal"; then
+            exit 1
+        fi
         do_add_mcp "$2" "local"
         ;;
     list-available)
+        # Only needs JSON parser
+        json_tool=$(_json_tool)
+        if [ "$json_tool" = "none" ]; then
+            echo "[dotfiles-claude] Error: jq or python3 required for this command"
+            echo "  Install one of:"
+            echo "    • jq:      apt install jq  (or brew install jq)"
+            echo "    • python3: apt install python3  (or brew install python3)"
+            exit 1
+        fi
         do_list_available
         ;;
     sync-from-opencode)
+        # Check minimal requirements before proceeding
+        if ! _check_requirements "minimal"; then
+            exit 1
+        fi
         do_sync_from_opencode
         ;;
     list)
+        # Only needs claude CLI
+        if ! _is_installed; then
+            echo "[dotfiles-claude] Claude Code not installed."
+            echo "  Install it from: https://docs.anthropic.com/en/docs/claude-code"
+            exit 1
+        fi
         do_list
         ;;
     generate-instructions)
+        # No special requirements
         do_generate_instructions
         ;;
     help|--help|-h)

@@ -13,6 +13,48 @@ Claude Code configuration for dotfiles (stow package).
 
 This stow package provides Claude Code AI coding agent configuration. Skills and instructions are synced from the shared `shared/ai-agents/` directory using the `devtools-ai` command.
 
+## Requirements
+
+### Essential Dependencies
+
+The `dotfiles-claude` script requires:
+
+- **Claude Code CLI** — The official Claude Code command-line interface
+  - Install: https://docs.anthropic.com/en/docs/claude-code
+  - Check: `claude --version`
+
+- **JSON Parser** — Either `jq` or `python3` for parsing MCP registry
+  - **jq**: `apt install jq` (or `brew install jq`)
+  - **python3**: `apt install python3` (or `brew install python3`)
+
+### Optional Dependencies
+
+For MCP installation, you may need:
+
+- **npx/node** — For npx-based MCPs (Figma, Chrome DevTools, MarkdownLint)
+  - Install: https://nodejs.org/
+  - Check: `node --version`
+
+- **uvx/uv** — For uvx-based MCPs (MarkItDown)
+  - Install: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+  - Check: `uv --version`
+
+- **pipx** — For pipx-based MCPs (Stack Overflow, Web Forager, Atlassian, OCR)
+  - Install: `python3 -m pip install --user pipx`
+  - Check: `pipx --version`
+
+- **docker** — For docker-based MCPs (SonarQube, GitHub Docker)
+  - Install: https://docs.docker.com/get-docker/
+  - Check: `docker --version`
+
+**Check all requirements:**
+
+```bash
+dotfiles-claude check
+```
+
+This will show which dependencies are installed and which are missing.
+
 ## Structure
 
 ```bash
@@ -57,6 +99,10 @@ This package includes management scripts installed to `~/.local/bin/org.jcchikik
 Main management script for Claude Code MCP configuration with support for both **local** (project-specific) and **global** (all projects) MCP scopes:
 
 #### Commands
+
+**Check system requirements:**
+
+- `dotfiles-claude check` — Verify all dependencies are installed
 
 **Install MCPs from shared registry:**
 
