@@ -386,22 +386,26 @@ _add_mcp_http() {
     mcp_url="$2"
     mcp_env="$3"
     
-    # Get token from environment
-    token=""
+    # Build JSON configuration
     if [ -n "$mcp_env" ]; then
+        # Get token from environment
+        token=""
         # Assume first env var is the token
         key=$(echo "$mcp_env" | cut -d',' -f1)
         eval "token=\${${key}:-}"
+        
+        if [ -z "$token" ]; then
+            echo "              [error] No token found for $mcp_name"
+            echo "              Set $key in ~/.profile.local"
+            return 1
+        fi
+        
+        # Build JSON with authentication
+        json_config="{\"type\": \"http\", \"url\": \"$mcp_url\", \"headers\": {\"Authorization\": \"Bearer $token\"}}"
+    else
+        # No authentication required
+        json_config="{\"type\": \"http\", \"url\": \"$mcp_url\"}"
     fi
-    
-    if [ -z "$token" ]; then
-        echo "              [error] No token found for $mcp_name"
-        echo "              Set $mcp_env in ~/.profile.local"
-        return 1
-    fi
-    
-    # Build JSON configuration
-    json_config="{\"type\": \"http\", \"url\": \"$mcp_url\", \"headers\": {\"Authorization\": \"Bearer $token\"}}"
     
     # Add scope flag if global
     scope_flag=""
@@ -456,7 +460,12 @@ _read_mcps_from_json() {
 
     case "$json_tool" in
         jq)
-            jq -r '.mcpServers | to_entries[] | "\(.key)|\(.value.type // "stdio")|\(.value.command) \(.value.args | join(" "))|\(.value.env | join(","))"' "$MCPS_FILE" 2>/dev/null
+            jq -r '.mcpServers | to_entries[] | 
+                if .value.type == "http" then
+                    "\(.key)|http|\(.value.url)|\(.value.env | join(","))"
+                else
+                    "\(.key)|\(.value.installMethod // "stdio")|\(.value.command) \(.value.args | join(" "))|\(.value.env | join(","))"
+                end' "$MCPS_FILE" 2>/dev/null
             ;;
         python3)
             python3 -c "
@@ -466,11 +475,20 @@ try:
         data = json.load(f)
     for name, mcp in data.get('mcpServers', {}).items():
         mcp_type = mcp.get('type', 'stdio')
-        cmd = mcp.get('command', '')
-        args = mcp.get('args', [])
-        command = ' '.join([cmd] + args)
+        
+        # For HTTP MCPs, use 'url' field and 'http' as install method
+        if mcp_type == 'http':
+            install_method = 'http'
+            command = mcp.get('url', '')
+        else:
+            # For stdio MCPs, use installMethod (npx, uvx, pipx, etc.)
+            install_method = mcp.get('installMethod', 'stdio')
+            cmd = mcp.get('command', '')
+            args = mcp.get('args', [])
+            command = ' '.join([cmd] + args) if cmd else ''
+        
         env = ','.join(mcp.get('env', []))
-        print(f'{name}|{mcp_type}|{command}|{env}')
+        print(f'{name}|{install_method}|{command}|{env}')
 except Exception as e:
     pass
 "
@@ -510,7 +528,16 @@ do_install_mcps() {
     echo "  Source: $MCPS_FILE"
     echo ""
 
-    _read_mcps_from_json | while IFS= read -r line; do
+    # Read MCPs into a variable to avoid subshell issues with pipes
+    mcp_list=$(_read_mcps_from_json)
+    
+    if [ -z "$mcp_list" ]; then
+        echo "  [warn] No MCPs found in registry or failed to parse"
+        return 1
+    fi
+    
+    # Process each MCP line
+    echo "$mcp_list" | while IFS= read -r line; do
         [ -z "$line" ] && continue
         _install_mcp "$line"
     done
