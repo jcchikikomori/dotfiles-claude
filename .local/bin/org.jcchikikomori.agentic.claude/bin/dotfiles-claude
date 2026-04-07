@@ -29,7 +29,7 @@ if [ -n "${DOTFILES_PATH:-}" ]; then
 elif [ -d "$HOME/.dotfiles" ]; then
     DOTFILES_DIR="$HOME/.dotfiles"
 else
-    DOTFILES_DIR="$(dirname "$(dirname "$(dirname "$(dirname "$(dirname "$(cd -- "$(dirname -- "$0")" && pwd)")")")")"
+    DOTFILES_DIR="$(dirname "$(dirname "$(dirname "$(dirname "$(dirname "$(cd -- "$(dirname -- "$0")" && pwd)")")")")")"
 fi
 
 SHARED_MCPS_FILE="${DOTFILES_DIR}/shared/ai-agents/mcps.json"
@@ -71,14 +71,14 @@ _json_tool() {
 
 _get_mcp_from_registry() {
     mcp_name="$1"
-    
+
     # Check if shared registry exists
     if [ ! -f "$SHARED_MCPS_FILE" ]; then
         return 1
     fi
-    
+
     json_tool=$(_json_tool)
-    
+
     case "$json_tool" in
         jq)
             jq -r --arg name "$mcp_name" '.mcpServers[$name] // empty' "$SHARED_MCPS_FILE" 2>/dev/null
@@ -112,12 +112,12 @@ _list_available_mcps() {
         done
         return
     fi
-    
+
     json_tool=$(_json_tool)
-    
+
     echo "  Available MCPs from shared registry:"
     echo ""
-    
+
     case "$json_tool" in
         jq)
             jq -r '.mcpServers | to_entries[] | "  • \(.key) - \(.value.description // "No description")"' "$SHARED_MCPS_FILE"
@@ -288,14 +288,14 @@ _add_mcp_global() {
     mcp_name="$1"
     mcp_command="$2"
     mcp_env="$3"
-    
+
     json_tool=$(_json_tool)
-    
+
     if [ "$json_tool" = "none" ]; then
         echo "  [error]   Cannot add global MCP: jq or python3 required"
         return 1
     fi
-    
+
     # Parse command into array
     cmd_array=""
     for arg in $mcp_command; do
@@ -305,7 +305,7 @@ _add_mcp_global() {
             cmd_array="$cmd_array, \"$arg\""
         fi
     done
-    
+
     # Build env object
     env_obj="{}"
     if [ -n "$mcp_env" ]; then
@@ -331,10 +331,10 @@ _add_mcp_global() {
             env_obj="{$env_entries}"
         fi
     fi
-    
+
     # Create MCP entry
     mcp_entry="{\"type\": \"stdio\", \"command\": $(echo "$mcp_command" | awk '{print $1}' | xargs -I{} echo "\"{}\""), \"args\": [$cmd_array], \"env\": $env_obj}"
-    
+
     # Read existing config or create new
     if [ -f "$CLAUDE_JSON" ]; then
         case "$json_tool" in
@@ -355,18 +355,18 @@ import sys
 try:
     with open('$CLAUDE_JSON', 'r') as f:
         config = json.load(f)
-    
+
     if 'mcpServers' not in config:
         config['mcpServers'] = {}
-    
+
     if '$mcp_name' in config['mcpServers']:
         print("              MCP '$mcp_name' already exists in global config")
         sys.exit(0)
-    
+
     # Parse the MCP entry
     mcp_data = json.loads('$mcp_entry')
     config['mcpServers']['$mcp_name'] = mcp_data
-    
+
     with open('$CLAUDE_JSON', 'w') as f:
         json.dump(config, f, indent=2)
 except Exception as e:
@@ -379,7 +379,7 @@ EOF
         # Create new config with global MCP
         echo "{\"mcpServers\": {\"$mcp_name\": $mcp_entry}}" | jq '.' > "$CLAUDE_JSON"
     fi
-    
+
     echo "              Added to global config (~/.claude.json)"
 }
 
@@ -480,7 +480,7 @@ do_sync_from_opencode() {
         "\(.key)|\(.value.type // "local")|\(.value.command | if type == "array" then join(" ") else . end)|\(.value.environment // {} | keys | join(","))"
     ' 2>/dev/null | while IFS= read -r line; do
         [ -z "$line" ] && continue
-        
+
         mcp_name=$(echo "$line" | cut -d'|' -f1)
         mcp_type=$(echo "$line" | cut -d'|' -f2)
         mcp_command=$(echo "$line" | cut -d'|' -f3)
@@ -535,16 +535,16 @@ do_list() {
 do_add_mcp() {
     mcp_name="$1"
     scope="$2"
-    
+
     if [ -z "$mcp_name" ]; then
         echo "[dotfiles-claude] Error: MCP name required"
         echo "Usage: dotfiles-claude add-$scope <mcp-name>"
         return 1
     fi
-    
+
     # Check if MCP exists in registry
     mcp_data=$(_get_mcp_from_registry "$mcp_name")
-    
+
     if [ -z "$mcp_data" ]; then
         echo "[dotfiles-claude] MCP '$mcp_name' not found in shared registry"
         echo ""
@@ -552,10 +552,10 @@ do_add_mcp() {
         _list_available_mcps
         return 1
     fi
-    
+
     # Extract MCP details
     json_tool=$(_json_tool)
-    
+
     case "$json_tool" in
         jq)
             mcp_command=$(echo "$mcp_data" | jq -r '[.command, .args[]?] | join(" ")')
@@ -588,10 +588,10 @@ print(data.get('type', 'stdio'))
             return 1
             ;;
     esac
-    
+
     # Set scope and install
     SCOPE="$scope"
-    
+
     echo "[dotfiles-claude] Adding '$mcp_name' ($scope scope)..."
     _install_mcp "$mcp_name|$mcp_type|$mcp_command|$mcp_env"
 }
