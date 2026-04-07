@@ -417,9 +417,14 @@ _add_mcp_global() {
         return 1
     fi
 
-    # Parse command into array
+    # Parse command into array (skip first word - it's the command itself)
     cmd_array=""
+    first_word=true
     for arg in $mcp_command; do
+        if [ "$first_word" = true ]; then
+            first_word=false
+            continue  # Skip first word (the command)
+        fi
         if [ -z "$cmd_array" ]; then
             cmd_array="\"$arg\""
         else
@@ -572,6 +577,75 @@ _report_env() {
     IFS="$old_ifs"
 }
 
+# Remove all MCPs from global config
+_remove_all_mcps_global() {
+    json_tool=$(_json_tool)
+    
+    if [ "$json_tool" = "none" ]; then
+        echo "  [error]   Cannot remove MCPs: jq or python3 required"
+        return 1
+    fi
+    
+    if [ ! -f "$CLAUDE_JSON" ]; then
+        echo "  [warn]    No global config found: $CLAUDE_JSON"
+        return 0
+    fi
+    
+    echo "  [remove]  Removing all MCPs from global config..."
+    
+    case "$json_tool" in
+        jq)
+            jq '.mcpServers = {}' "$CLAUDE_JSON" > "${CLAUDE_JSON}.tmp" && mv "${CLAUDE_JSON}.tmp" "$CLAUDE_JSON"
+            ;;
+        python3)
+            python3 << EOF
+import json
+try:
+    with open('$CLAUDE_JSON', 'r') as f:
+        config = json.load(f)
+    
+    config['mcpServers'] = {}
+    
+    with open('$CLAUDE_JSON', 'w') as f:
+        json.dump(config, f, indent=2)
+except Exception as e:
+    print(f"  [error] Failed to remove MCPs: {e}")
+    exit(1)
+EOF
+            ;;
+    esac
+    
+    echo "  [done]    All MCPs removed from global config"
+}
+
+# Remove all MCPs from local config (current project)
+_remove_all_mcps_local() {
+    # Use claude CLI to list and remove MCPs
+    if ! command -v claude > /dev/null 2>&1; then
+        echo "  [error]   Claude CLI not found"
+        return 1
+    fi
+    
+    echo "  [remove]  Removing all MCPs from local config..."
+    
+    # Get list of MCPs and remove each one
+    mcp_names=$(claude mcp list 2>/dev/null | awk '{print $1}' | grep -v '^$')
+    
+    if [ -z "$mcp_names" ]; then
+        echo "  [warn]    No MCPs found in local config"
+        return 0
+    fi
+    
+    echo "$mcp_names" | while read -r mcp_name; do
+        if [ -n "$mcp_name" ]; then
+            echo "  [remove]  $mcp_name"
+            claude mcp remove "$mcp_name" 2>&1 | sed 's/^/              /'
+        fi
+    done
+    
+    echo "  [done]    All MCPs removed from local config"
+}
+
 # ─── MCP dependency installer ─────────────────────────────────────────────────
 
 # Read all MCPs from JSON registry and install them
@@ -626,8 +700,19 @@ except Exception as e:
 }
 
 do_install_mcps() {
+    force_install=false
+    
+    # Check for --force flag
+    if [ "${FORCE_INSTALL:-}" = "true" ]; then
+        force_install=true
+    fi
+    
     echo ""
-    echo "[dotfiles-claude] Installing MCP dependencies..."
+    if [ "$force_install" = true ]; then
+        echo "[dotfiles-claude] Installing MCP dependencies (FORCE mode)..."
+    else
+        echo "[dotfiles-claude] Installing MCP dependencies..."
+    fi
 
     # Guard: claude must be installed
     if ! _is_installed; then
@@ -646,6 +731,17 @@ do_install_mcps() {
     if [ ! -f "$MCPS_FILE" ]; then
         echo "[dotfiles-claude] MCP registry not found: $MCPS_FILE"
         return 1
+    fi
+    
+    # If force mode, remove all existing MCPs first
+    if [ "$force_install" = true ]; then
+        echo ""
+        echo "  Force mode enabled - removing existing MCPs first..."
+        if [ "$SCOPE" = "global" ]; then
+            _remove_all_mcps_global
+        else
+            _remove_all_mcps_local
+        fi
     fi
 
     echo ""
@@ -674,6 +770,36 @@ do_install_mcps() {
     echo "  To add more MCPs:         claude mcp add <name> -- <command>"
     echo "  To remove an MCP:         claude mcp remove <name>"
     echo ""
+}
+
+# ─── Reinstall MCPs ───────────────────────────────────────────────────────────
+
+do_reinstall_mcps() {
+    echo ""
+    echo "[dotfiles-claude] Reinstalling MCPs..."
+    echo ""
+    
+    # Guard: claude must be installed
+    if ! _is_installed; then
+        echo "[dotfiles-claude] Claude Code not installed."
+        echo "  Install it from: https://docs.anthropic.com/en/docs/claude-code"
+        return 1
+    fi
+    
+    # Step 1: Remove all MCPs
+    if [ "$SCOPE" = "global" ]; then
+        echo "  [step 1/2] Removing all MCPs from GLOBAL config..."
+        _remove_all_mcps_global
+    else
+        echo "  [step 1/2] Removing all MCPs from LOCAL config..."
+        _remove_all_mcps_local
+    fi
+    
+    echo ""
+    
+    # Step 2: Install MCPs from registry
+    echo "  [step 2/2] Installing MCPs from registry..."
+    do_install_mcps
 }
 
 # ─── Sync from OpenCode ───────────────────────────────────────────────────────
@@ -915,22 +1041,26 @@ usage() {
     echo "Usage: dotfiles-claude <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  check                             Check system requirements"
-    echo "  install-mcps [--global|--local]   Install MCPs from registry (default: local)"
-    echo "  add-global <mcp-name>             Add MCP to global config (all projects)"
-    echo "  add-local <mcp-name>              Add MCP to local config (current project)"
-    echo "  list-available                    List MCPs available in shared registry"
-    echo "  list                              List currently configured MCPs"
-    echo "  sync-from-opencode                Import MCPs from OpenCode config"
-    echo "  generate-instructions             Generate CLAUDE.md from shared instructions"
+    echo "  check                                Check system requirements"
+    echo "  install-mcps [--global|--local]      Install MCPs from registry (default: local)"
+    echo "            [--force]                  Force reinstall (remove existing first)"
+    echo "  reinstall-mcps [--global|--local]    Remove all MCPs and reinstall from registry"
+    echo "  add-global <mcp-name>                Add MCP to global config (all projects)"
+    echo "  add-local <mcp-name>                 Add MCP to local config (current project)"
+    echo "  list-available                       List MCPs available in shared registry"
+    echo "  list                                 List currently configured MCPs"
+    echo "  sync-from-opencode                   Import MCPs from OpenCode config"
+    echo "  generate-instructions                Generate CLAUDE.md from shared instructions"
     echo ""
     echo "Examples:"
-    echo "  dotfiles-claude check                     # Check requirements"
-    echo "  dotfiles-claude install-mcps              # Install all MCPs locally"
-    echo "  dotfiles-claude install-mcps --global     # Install all MCPs globally"
-    echo "  dotfiles-claude add-global github         # Add GitHub MCP globally"
-    echo "  dotfiles-claude add-local context7        # Add Context7 MCP locally"
-    echo "  dotfiles-claude generate-instructions     # Generate CLAUDE.md"
+    echo "  dotfiles-claude check                        # Check requirements"
+    echo "  dotfiles-claude install-mcps                 # Install all MCPs locally"
+    echo "  dotfiles-claude install-mcps --global        # Install all MCPs globally"
+    echo "  dotfiles-claude install-mcps --global --force # Force reinstall globally"
+    echo "  dotfiles-claude reinstall-mcps --global      # Remove & reinstall globally"
+    echo "  dotfiles-claude add-global github            # Add GitHub MCP globally"
+    echo "  dotfiles-claude add-local context7           # Add Context7 MCP locally"
+    echo "  dotfiles-claude generate-instructions        # Generate CLAUDE.md"
     echo ""
     echo "Environment variables are read from ~/.profile.local"
 }
@@ -945,15 +1075,51 @@ case "${1:-}" in
         if ! _check_requirements "minimal"; then
             exit 1
         fi
-        # Check for scope flags
-        if [ "${2:-}" = "--global" ]; then
-            SCOPE="global"
+        # Check for scope and force flags
+        shift  # Remove 'install-mcps' from args
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --global)
+                    SCOPE="global"
+                    ;;
+                --local)
+                    SCOPE="local"
+                    ;;
+                --force)
+                    FORCE_INSTALL="true"
+                    ;;
+                *)
+                    echo "[dotfiles-claude] Unknown flag: $1"
+                    usage
+                    exit 1
+                    ;;
+            esac
+            shift
+        done
+        
+        if [ "$SCOPE" = "global" ]; then
             echo "[dotfiles-claude] Installing MCPs in GLOBAL scope (all projects)"
-        elif [ "${2:-}" = "--local" ]; then
-            SCOPE="local"
+        else
             echo "[dotfiles-claude] Installing MCPs in LOCAL scope (current project)"
         fi
         do_install_mcps
+        ;;
+    reinstall-mcps)
+        # Check minimal requirements before proceeding
+        if ! _check_requirements "minimal"; then
+            exit 1
+        fi
+        # Check for scope flag
+        if [ "${2:-}" = "--global" ]; then
+            SCOPE="global"
+            echo "[dotfiles-claude] Reinstalling MCPs in GLOBAL scope (all projects)"
+        elif [ "${2:-}" = "--local" ]; then
+            SCOPE="local"
+            echo "[dotfiles-claude] Reinstalling MCPs in LOCAL scope (current project)"
+        else
+            echo "[dotfiles-claude] Reinstalling MCPs in LOCAL scope (current project)"
+        fi
+        do_reinstall_mcps
         ;;
     add-global)
         # Check minimal requirements before proceeding
