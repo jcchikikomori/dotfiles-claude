@@ -53,6 +53,17 @@ else
     MCPS_FILE="$SHARED_MCPS_FILE"
 fi
 
+# Plugin registry paths
+LOCAL_PLUGINS_FILE="${CLAUDE_DIR}/claude-plugins.json"
+SHARED_PLUGINS_FILE="${DOTFILES_DIR}/shared/ai-agents/claude-plugins.json"
+
+# Use local claude-plugins.json if it exists, otherwise use shared
+if [ -f "$LOCAL_PLUGINS_FILE" ]; then
+    PLUGINS_FILE="$LOCAL_PLUGINS_FILE"
+else
+    PLUGINS_FILE="$SHARED_PLUGINS_FILE"
+fi
+
 # Scope configuration
 SCOPE="local"  # default scope
 
@@ -995,6 +1006,266 @@ do_list_available() {
     echo ""
 }
 
+# ─── Plugin Management ────────────────────────────────────────────────────────
+
+# List available plugins from registry
+_list_available_plugins() {
+    if [ ! -f "$PLUGINS_FILE" ]; then
+        echo "  [warn] Plugin registry not found: $PLUGINS_FILE"
+        return 1
+    fi
+
+    json_tool=$(_json_tool)
+
+    echo "  Available plugins from registry:"
+    echo ""
+
+    case "$json_tool" in
+        jq)
+            jq -r '.plugins | to_entries[] | "  • \(.key) - \(.value.description)"' "$PLUGINS_FILE"
+            ;;
+        python3)
+            python3 -c "
+import json
+try:
+    with open('$PLUGINS_FILE') as f:
+        data = json.load(f)
+    for name, plugin in data.get('plugins', {}).items():
+        desc = plugin.get('description', 'No description')
+        print(f'  • {name} - {desc}')
+except Exception as e:
+    print(f'  [error] Failed to read registry: {e}')
+"
+            ;;
+        *)
+            echo "  [warn] No JSON tool available (install jq or python3)"
+            ;;
+    esac
+}
+
+# Install a single plugin
+_install_plugin() {
+    plugin_name="$1"
+    plugin_scope="${2:-user}"
+    
+    if [ ! -f "$PLUGINS_FILE" ]; then
+        echo "  [error] Plugin registry not found: $PLUGINS_FILE"
+        return 1
+    fi
+    
+    json_tool=$(_json_tool)
+    
+    # Get plugin data from registry
+    plugin_data=""
+    case "$json_tool" in
+        jq)
+            plugin_data=$(jq -r --arg name "$plugin_name" '.plugins[$name] // empty' "$PLUGINS_FILE" 2>/dev/null)
+            ;;
+        python3)
+            plugin_data=$(python3 -c "
+import json
+import sys
+try:
+    with open('$PLUGINS_FILE') as f:
+        data = json.load(f)
+    plugin = data.get('plugins', {}).get('$plugin_name')
+    if plugin:
+        print(json.dumps(plugin))
+except Exception:
+    pass
+" 2>/dev/null)
+            ;;
+    esac
+    
+    if [ -z "$plugin_data" ]; then
+        echo "  [skip]    $plugin_name  (not found in registry)"
+        return 0
+    fi
+    
+    # Extract marketplace and check requirements
+    marketplace=""
+    requires=""
+    env_vars=""
+    
+    case "$json_tool" in
+        jq)
+            marketplace=$(echo "$plugin_data" | jq -r '.marketplace // empty')
+            requires=$(echo "$plugin_data" | jq -r '.requires[]? // empty' | tr '\n' ' ')
+            env_vars=$(echo "$plugin_data" | jq -r '.env[]? // empty' | tr '\n' ' ')
+            ;;
+        python3)
+            marketplace=$(python3 -c "
+import json
+data = json.loads('$plugin_data')
+print(data.get('marketplace', ''))
+" 2>/dev/null)
+            requires=$(python3 -c "
+import json
+data = json.loads('$plugin_data')
+print(' '.join(data.get('requires', [])))
+" 2>/dev/null)
+            env_vars=$(python3 -c "
+import json
+data = json.loads('$plugin_data')
+print(' '.join(data.get('env', [])))
+" 2>/dev/null)
+            ;;
+    esac
+    
+    # Check for required binaries
+    if [ -n "$requires" ]; then
+        missing=""
+        for req in $requires; do
+            if ! command -v "$req" > /dev/null 2>&1; then
+                missing="$missing $req"
+            fi
+        done
+        
+        if [ -n "$missing" ]; then
+            echo "  [warn]    $plugin_name  requires:$missing"
+            echo "            Install missing binaries first"
+            return 0
+        fi
+    fi
+    
+    # Install using claude CLI
+    echo "  [install] $plugin_name@$marketplace (scope: $plugin_scope)"
+    
+    if claude plugin install "${plugin_name}@${marketplace}" --scope "$plugin_scope" 2>&1 | sed 's/^/            /'; then
+        echo "  [done]    $plugin_name installed"
+        
+        # Report environment variables
+        if [ -n "$env_vars" ]; then
+            echo "            ENV for $plugin_name:"
+            for var in $env_vars; do
+                val=""
+                eval "val=\${${var}:-}"
+                if [ -n "$val" ]; then
+                    echo "              $var  → set ✓"
+                else
+                    echo "              $var  → NOT SET  ← export in ~/.profile.local"
+                fi
+            done
+        fi
+    else
+        echo "  [fail]    $plugin_name installation failed"
+        return 1
+    fi
+}
+
+# Read plugins from registry and return formatted list
+_read_plugins_from_json() {
+    if [ ! -f "$PLUGINS_FILE" ]; then
+        echo "  [error] Plugin registry not found: $PLUGINS_FILE"
+        return 1
+    fi
+
+    json_tool=$(_json_tool)
+
+    case "$json_tool" in
+        jq)
+            jq -r '.plugins | to_entries[] | "\(.key)|\(.value.marketplace)|\(.value.scope // "user")"' "$PLUGINS_FILE" 2>/dev/null
+            ;;
+        python3)
+            python3 -c "
+import json
+try:
+    with open('$PLUGINS_FILE') as f:
+        data = json.load(f)
+    for name, plugin in data.get('plugins', {}).items():
+        marketplace = plugin.get('marketplace', 'unknown')
+        scope = plugin.get('scope', 'user')
+        print(f'{name}|{marketplace}|{scope}')
+except Exception as e:
+    pass
+"
+            ;;
+        *)
+            echo "  [error] No JSON tool available (install jq or python3)"
+            return 1
+            ;;
+    esac
+}
+
+# Install all plugins from registry
+do_install_plugins() {
+    echo ""
+    echo "[dotfiles-claude] Installing plugins from registry..."
+
+    # Guard: claude must be installed
+    if ! _is_installed; then
+        echo "[dotfiles-claude] Claude Code not installed."
+        echo "  Install it from: https://docs.anthropic.com/en/docs/claude-code"
+        return 1
+    fi
+
+    # Guard: registry must exist
+    if [ ! -f "$PLUGINS_FILE" ]; then
+        echo "[dotfiles-claude] Plugin registry not found: $PLUGINS_FILE"
+        return 1
+    fi
+
+    echo ""
+    echo "  Source: $PLUGINS_FILE"
+    echo "  Scope: ${PLUGIN_SCOPE:-user}"
+    echo ""
+
+    # Read plugins into a variable
+    plugin_list=$(_read_plugins_from_json)
+    
+    if [ -z "$plugin_list" ]; then
+        echo "  [warn] No plugins found in registry or failed to parse"
+        return 1
+    fi
+    
+    # Process each plugin
+    echo "$plugin_list" | while IFS='|' read -r name marketplace scope; do
+        [ -z "$name" ] && continue
+        # Use specified scope or default from registry
+        install_scope="${PLUGIN_SCOPE:-$scope}"
+        _install_plugin "$name" "$install_scope"
+    done
+
+    echo ""
+    echo "[dotfiles-claude] Plugin installation complete."
+    echo ""
+    echo "  To list installed plugins:  claude plugin list"
+    echo "  To enable a plugin:         claude plugin enable <name>@<marketplace>"
+    echo "  To disable a plugin:        claude plugin disable <name>@<marketplace>"
+    echo ""
+}
+
+# Add a single plugin
+do_add_plugin() {
+    plugin_name="$1"
+    scope="${2:-user}"
+    
+    if [ -z "$plugin_name" ]; then
+        echo "[dotfiles-claude] Error: Plugin name required"
+        echo "  Usage: dotfiles-claude add-plugin <name> [--scope user|project|local]"
+        return 1
+    fi
+    
+    echo ""
+    echo "[dotfiles-claude] Adding plugin: $plugin_name (scope: $scope)"
+    echo ""
+    
+    _install_plugin "$plugin_name" "$scope"
+}
+
+# List available plugins
+do_list_available_plugins() {
+    echo ""
+    echo "[dotfiles-claude] Available Claude Code Plugins"
+    echo ""
+    _list_available_plugins
+    echo ""
+    echo "To install plugins:"
+    echo "  dotfiles-claude install-plugins [--scope user|project|local]"
+    echo "  dotfiles-claude add-plugin <name> [--scope user|project|local]"
+    echo ""
+}
+
 # ─── Instruction generator ────────────────────────────────────────────────────
 
 do_generate_instructions() {
@@ -1040,7 +1311,7 @@ do_generate_instructions() {
 usage() {
     echo "Usage: dotfiles-claude <command> [options]"
     echo ""
-    echo "Commands:"
+    echo "MCP Commands:"
     echo "  check                                Check system requirements"
     echo "  install-mcps [--global|--local]      Install MCPs from registry (default: local)"
     echo "            [--force]                  Force reinstall (remove existing first)"
@@ -1048,8 +1319,15 @@ usage() {
     echo "  add-global <mcp-name>                Add MCP to global config (all projects)"
     echo "  add-local <mcp-name>                 Add MCP to local config (current project)"
     echo "  list-available                       List MCPs available in shared registry"
-    echo "  list                                 List currently configured MCPs"
     echo "  sync-from-opencode                   Import MCPs from OpenCode config"
+    echo ""
+    echo "Plugin Commands:"
+    echo "  install-plugins [--scope user|project|local]  Install plugins from registry (default: user)"
+    echo "  add-plugin <name> [--scope user|project|local]  Add single plugin (default: user)"
+    echo "  list-plugins                         List available plugins from registry"
+    echo ""
+    echo "Other Commands:"
+    echo "  list                                 List currently configured MCPs"
     echo "  generate-instructions                Generate CLAUDE.md from shared instructions"
     echo ""
     echo "Examples:"
@@ -1060,6 +1338,10 @@ usage() {
     echo "  dotfiles-claude reinstall-mcps --global      # Remove & reinstall globally"
     echo "  dotfiles-claude add-global github            # Add GitHub MCP globally"
     echo "  dotfiles-claude add-local context7           # Add Context7 MCP locally"
+    echo "  dotfiles-claude install-plugins              # Install all plugins (user scope)"
+    echo "  dotfiles-claude install-plugins --scope project  # Install plugins (project scope)"
+    echo "  dotfiles-claude add-plugin pyright-lsp       # Add Python LSP plugin"
+    echo "  dotfiles-claude list-plugins                 # List available plugins"
     echo "  dotfiles-claude generate-instructions        # Generate CLAUDE.md"
     echo ""
     echo "Environment variables are read from ~/.profile.local"
@@ -1166,6 +1448,73 @@ case "${1:-}" in
     generate-instructions)
         # No special requirements
         do_generate_instructions
+        ;;
+    install-plugins)
+        # Check minimal requirements before proceeding
+        if ! _check_requirements "minimal"; then
+            exit 1
+        fi
+        # Check for scope flag
+        shift  # Remove 'install-plugins' from args
+        PLUGIN_SCOPE="user"  # Default scope
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --scope)
+                    shift
+                    PLUGIN_SCOPE="$1"
+                    ;;
+                user|project|local)
+                    PLUGIN_SCOPE="$1"
+                    ;;
+                *)
+                    echo "[dotfiles-claude] Unknown flag: $1"
+                    usage
+                    exit 1
+                    ;;
+            esac
+            shift
+        done
+        echo "[dotfiles-claude] Installing plugins in ${PLUGIN_SCOPE} scope"
+        do_install_plugins
+        ;;
+    add-plugin)
+        # Check minimal requirements before proceeding
+        if ! _check_requirements "minimal"; then
+            exit 1
+        fi
+        plugin_name="$2"
+        plugin_scope="user"  # Default scope
+        shift 2  # Remove command and plugin name
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --scope)
+                    shift
+                    plugin_scope="$1"
+                    ;;
+                user|project|local)
+                    plugin_scope="$1"
+                    ;;
+                *)
+                    echo "[dotfiles-claude] Unknown flag: $1"
+                    usage
+                    exit 1
+                    ;;
+            esac
+            shift
+        done
+        do_add_plugin "$plugin_name" "$plugin_scope"
+        ;;
+    list-plugins)
+        # Only needs JSON parser
+        json_tool=$(_json_tool)
+        if [ "$json_tool" = "none" ]; then
+            echo "[dotfiles-claude] Error: jq or python3 required for this command"
+            echo "  Install one of:"
+            echo "    • jq:      apt install jq  (or brew install jq)"
+            echo "    • python3: apt install python3  (or brew install python3)"
+            exit 1
+        fi
+        do_list_available_plugins
         ;;
     help|--help|-h)
         usage
