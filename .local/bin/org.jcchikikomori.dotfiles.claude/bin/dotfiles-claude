@@ -4,6 +4,16 @@ set -eu
 
 # dotfiles-claude — install Claude Code MCP dependencies
 # https://docs.anthropic.com/en/docs/claude-code
+#
+# Usage: dotfiles-claude <command> [options]
+#
+# Commands:
+#   install-mcps [--global|--local]  Install MCPs from registry (default: local)
+#   add-global <mcp-name>            Add MCP to global config (all projects)
+#   add-local <mcp-name>             Add MCP to local config (current project)
+#   list-available                   List MCPs available in shared registry
+#   list                             List currently configured MCPs
+#   sync-from-opencode               Import MCPs from OpenCode config
 
 # Source .profile.local for environment variables (MCP tokens, etc.)
 if [ -f "$HOME/.profile.local" ]; then
@@ -11,6 +21,21 @@ if [ -f "$HOME/.profile.local" ]; then
 fi
 
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+CLAUDE_JSON="$HOME/.claude.json"
+
+# Determine dotfiles path for shared MCP registry
+if [ -n "${DOTFILES_PATH:-}" ]; then
+    DOTFILES_DIR="$DOTFILES_PATH"
+elif [ -d "$HOME/.dotfiles" ]; then
+    DOTFILES_DIR="$HOME/.dotfiles"
+else
+    DOTFILES_DIR="$(dirname "$(dirname "$(dirname "$(dirname "$(dirname "$(cd -- "$(dirname -- "$0")" && pwd)")")")")"
+fi
+
+SHARED_MCPS_FILE="${DOTFILES_DIR}/shared/ai-agents/mcps.json"
+
+# Scope configuration
+SCOPE="local"  # default scope
 
 _is_installed() {
     command -v claude > /dev/null 2>&1
@@ -42,9 +67,79 @@ _json_tool() {
 }
 
 # ─── MCP Registry ─────────────────────────────────────────────────────────────
-# Define MCPs to install - same ones as OpenCode for consistency
-# Format: name|type|command|env_keys
-# Types: npx, uvx, pipx, docker, http
+# Read MCPs from shared registry or fallback to inline definition
+
+_get_mcp_from_registry() {
+    mcp_name="$1"
+    
+    # Check if shared registry exists
+    if [ ! -f "$SHARED_MCPS_FILE" ]; then
+        return 1
+    fi
+    
+    json_tool=$(_json_tool)
+    
+    case "$json_tool" in
+        jq)
+            jq -r --arg name "$mcp_name" '.mcpServers[$name] // empty' "$SHARED_MCPS_FILE" 2>/dev/null
+            ;;
+        python3)
+            python3 -c "
+import json
+import sys
+try:
+    with open('$SHARED_MCPS_FILE') as f:
+        data = json.load(f)
+    mcp = data.get('mcpServers', {}).get('$mcp_name')
+    if mcp:
+        print(json.dumps(mcp))
+except Exception:
+    pass
+"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+_list_available_mcps() {
+    if [ ! -f "$SHARED_MCPS_FILE" ]; then
+        echo "  [warn] Shared MCP registry not found: $SHARED_MCPS_FILE"
+        echo "  [info] Using built-in registry"
+        _get_mcp_registry | cut -d'|' -f1 | while read -r name; do
+            echo "  • $name"
+        done
+        return
+    fi
+    
+    json_tool=$(_json_tool)
+    
+    echo "  Available MCPs from shared registry:"
+    echo ""
+    
+    case "$json_tool" in
+        jq)
+            jq -r '.mcpServers | to_entries[] | "  • \(.key) - \(.value.description // "No description")"' "$SHARED_MCPS_FILE"
+            ;;
+        python3)
+            python3 -c "
+import json
+try:
+    with open('$SHARED_MCPS_FILE') as f:
+        data = json.load(f)
+    for name, mcp in data.get('mcpServers', {}).items():
+        desc = mcp.get('description', 'No description')
+        print(f'  • {name} - {desc}')
+except Exception as e:
+    print(f'  [error] Failed to read registry: {e}')
+"
+            ;;
+        *)
+            echo "  [warn] No JSON tool available (install jq or python3)"
+            ;;
+    esac
+}
 
 _get_mcp_registry() {
     cat <<'EOF'
@@ -145,6 +240,7 @@ _install_mcp() {
 }
 
 # Add MCP with environment variables
+# Usage: _add_mcp_with_env <name> <command> <env_keys>
 _add_mcp_with_env() {
     mcp_name="$1"
     mcp_command="$2"
@@ -169,18 +265,122 @@ _add_mcp_with_env() {
         IFS="$old_ifs"
     fi
 
-    # Parse command into parts
-    cmd_first=$(echo "$mcp_command" | awk '{print $1}')
-    cmd_rest=$(echo "$mcp_command" | cut -d' ' -f2-)
-
     # Add MCP using claude CLI
-    if [ -n "$env_flags" ]; then
-        # shellcheck disable=SC2086
-        claude mcp add $env_flags "$mcp_name" -- $mcp_command 2>&1 | sed 's/^/              /'
+    # Note: Claude CLI doesn't support --global flag, it always adds to current project
+    # For global MCPs, we need to manually edit ~/.claude.json
+    if [ "$SCOPE" = "global" ]; then
+        _add_mcp_global "$mcp_name" "$mcp_command" "$mcp_env"
     else
-        # shellcheck disable=SC2086
-        claude mcp add "$mcp_name" -- $mcp_command 2>&1 | sed 's/^/              /'
+        # Local scope - use CLI
+        if [ -n "$env_flags" ]; then
+            # shellcheck disable=SC2086
+            claude mcp add $env_flags "$mcp_name" -- $mcp_command 2>&1 | sed 's/^/              /'
+        else
+            # shellcheck disable=SC2086
+            claude mcp add "$mcp_name" -- $mcp_command 2>&1 | sed 's/^/              /'
+        fi
     fi
+}
+
+# Add MCP to global config (all projects)
+# This manually edits ~/.claude.json since CLI doesn't support global scope
+_add_mcp_global() {
+    mcp_name="$1"
+    mcp_command="$2"
+    mcp_env="$3"
+    
+    json_tool=$(_json_tool)
+    
+    if [ "$json_tool" = "none" ]; then
+        echo "  [error]   Cannot add global MCP: jq or python3 required"
+        return 1
+    fi
+    
+    # Parse command into array
+    cmd_array=""
+    for arg in $mcp_command; do
+        if [ -z "$cmd_array" ]; then
+            cmd_array="\"$arg\""
+        else
+            cmd_array="$cmd_array, \"$arg\""
+        fi
+    done
+    
+    # Build env object
+    env_obj="{}"
+    if [ -n "$mcp_env" ]; then
+        old_ifs="$IFS"
+        IFS=","
+        env_entries=""
+        for key in $mcp_env; do
+            IFS="$old_ifs"
+            [ -z "$key" ] && continue
+            val=""
+            eval "val=\${${key}:-}"
+            if [ -n "$val" ]; then
+                if [ -z "$env_entries" ]; then
+                    env_entries="\"$key\": \"$val\""
+                else
+                    env_entries="$env_entries, \"$key\": \"$val\""
+                fi
+            fi
+            IFS=","
+        done
+        IFS="$old_ifs"
+        if [ -n "$env_entries" ]; then
+            env_obj="{$env_entries}"
+        fi
+    fi
+    
+    # Create MCP entry
+    mcp_entry="{\"type\": \"stdio\", \"command\": $(echo "$mcp_command" | awk '{print $1}' | xargs -I{} echo "\"{}\""), \"args\": [$cmd_array], \"env\": $env_obj}"
+    
+    # Read existing config or create new
+    if [ -f "$CLAUDE_JSON" ]; then
+        case "$json_tool" in
+            jq)
+                # Check if MCP already exists globally
+                if jq -e ".mcpServers.\"$mcp_name\"" "$CLAUDE_JSON" > /dev/null 2>&1; then
+                    echo "              MCP '$mcp_name' already exists in global config"
+                    return 0
+                fi
+                # Add to global mcpServers
+                jq --arg name "$mcp_name" --argjson entry "$mcp_entry" '.mcpServers[$name] = $entry' "$CLAUDE_JSON" > "${CLAUDE_JSON}.tmp" && mv "${CLAUDE_JSON}.tmp" "$CLAUDE_JSON"
+                ;;
+            python3)
+                python3 << EOF
+import json
+import sys
+
+try:
+    with open('$CLAUDE_JSON', 'r') as f:
+        config = json.load(f)
+    
+    if 'mcpServers' not in config:
+        config['mcpServers'] = {}
+    
+    if '$mcp_name' in config['mcpServers']:
+        print("              MCP '$mcp_name' already exists in global config")
+        sys.exit(0)
+    
+    # Parse the MCP entry
+    mcp_data = json.loads('$mcp_entry')
+    config['mcpServers']['$mcp_name'] = mcp_data
+    
+    with open('$CLAUDE_JSON', 'w') as f:
+        json.dump(config, f, indent=2)
+except Exception as e:
+    print(f"              Error: {e}", file=sys.stderr)
+    sys.exit(1)
+EOF
+                ;;
+        esac
+    else
+        # Create new config with global MCP
+        echo "{\"mcpServers\": {\"$mcp_name\": $mcp_entry}}" | jq '.' > "$CLAUDE_JSON"
+    fi
+    
+    echo "              Added to global config (~/.claude.json)"
 }
 
 # Report ENV status
@@ -330,18 +530,142 @@ do_list() {
     echo ""
 }
 
+# ─── Add single MCP ───────────────────────────────────────────────────────────
+
+do_add_mcp() {
+    mcp_name="$1"
+    scope="$2"
+    
+    if [ -z "$mcp_name" ]; then
+        echo "[dotfiles-claude] Error: MCP name required"
+        echo "Usage: dotfiles-claude add-$scope <mcp-name>"
+        return 1
+    fi
+    
+    # Check if MCP exists in registry
+    mcp_data=$(_get_mcp_from_registry "$mcp_name")
+    
+    if [ -z "$mcp_data" ]; then
+        echo "[dotfiles-claude] MCP '$mcp_name' not found in shared registry"
+        echo ""
+        echo "Available MCPs:"
+        _list_available_mcps
+        return 1
+    fi
+    
+    # Extract MCP details
+    json_tool=$(_json_tool)
+    
+    case "$json_tool" in
+        jq)
+            mcp_command=$(echo "$mcp_data" | jq -r '[.command, .args[]?] | join(" ")')
+            mcp_env=$(echo "$mcp_data" | jq -r '(.env | select(. != null) | join(",")) // ""')
+            mcp_type=$(echo "$mcp_data" | jq -r '.type // "stdio"')
+            ;;
+        python3)
+            mcp_command=$(python3 -c "
+import json
+import sys
+data = json.loads('$mcp_data')
+cmd = data.get('command', '')
+args = data.get('args', [])
+print(' '.join([cmd] + args))
+")
+            mcp_env=$(python3 -c "
+import json
+data = json.loads('$mcp_data')
+env = data.get('env', [])
+print(','.join(env) if env else '')
+")
+            mcp_type=$(python3 -c "
+import json
+data = json.loads('$mcp_data')
+print(data.get('type', 'stdio'))
+")
+            ;;
+        *)
+            echo "[dotfiles-claude] Error: jq or python3 required to parse MCP registry"
+            return 1
+            ;;
+    esac
+    
+    # Set scope and install
+    SCOPE="$scope"
+    
+    echo "[dotfiles-claude] Adding '$mcp_name' ($scope scope)..."
+    _install_mcp "$mcp_name|$mcp_type|$mcp_command|$mcp_env"
+}
+
+# ─── List available MCPs ──────────────────────────────────────────────────────
+
+do_list_available() {
+    echo ""
+    echo "[dotfiles-claude] Shared MCP Registry"
+    echo ""
+    _list_available_mcps
+    echo ""
+    echo "To add an MCP:"
+    echo "  dotfiles-claude add-local <name>   # Current project only"
+    echo "  dotfiles-claude add-global <name>  # All projects (global)"
+    echo ""
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+usage() {
+    echo "Usage: dotfiles-claude <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  install-mcps [--global|--local]   Install MCPs from registry (default: local)"
+    echo "  add-global <mcp-name>             Add MCP to global config (all projects)"
+    echo "  add-local <mcp-name>              Add MCP to local config (current project)"
+    echo "  list-available                    List MCPs available in shared registry"
+    echo "  list                              List currently configured MCPs"
+    echo "  sync-from-opencode                Import MCPs from OpenCode config"
+    echo ""
+    echo "Examples:"
+    echo "  dotfiles-claude install-mcps              # Install all MCPs locally"
+    echo "  dotfiles-claude install-mcps --global     # Install all MCPs globally"
+    echo "  dotfiles-claude add-global github         # Add GitHub MCP globally"
+    echo "  dotfiles-claude add-local context7        # Add Context7 MCP locally"
+    echo ""
+    echo "Environment variables are read from ~/.profile.local"
+}
+
+# Parse arguments
 case "${1:-}" in
-    install-mcps)       do_install_mcps ;;
-    sync-from-opencode) do_sync_from_opencode ;;
-    list)               do_list ;;
+    install-mcps)
+        # Check for scope flags
+        if [ "${2:-}" = "--global" ]; then
+            SCOPE="global"
+            echo "[dotfiles-claude] Installing MCPs in GLOBAL scope (all projects)"
+        elif [ "${2:-}" = "--local" ]; then
+            SCOPE="local"
+            echo "[dotfiles-claude] Installing MCPs in LOCAL scope (current project)"
+        fi
+        do_install_mcps
+        ;;
+    add-global)
+        do_add_mcp "$2" "global"
+        ;;
+    add-local)
+        do_add_mcp "$2" "local"
+        ;;
+    list-available)
+        do_list_available
+        ;;
+    sync-from-opencode)
+        do_sync_from_opencode
+        ;;
+    list)
+        do_list
+        ;;
+    help|--help|-h)
+        usage
+        exit 0
+        ;;
     *)
-        echo "Usage: dotfiles-claude {install-mcps|sync-from-opencode|list}"
-        echo ""
-        echo "  install-mcps:        Install common MCP servers (context7, github, etc.)"
-        echo "  sync-from-opencode:  Import enabled MCPs from OpenCode config"
-        echo "  list:                List configured MCP servers"
+        usage
         exit 1
         ;;
 esac

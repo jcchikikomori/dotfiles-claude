@@ -52,18 +52,57 @@ This package includes management scripts installed to `~/.local/bin/org.jcchikik
 
 ### `dotfiles-claude`
 
-Main management script for Claude Code MCP configuration:
+Main management script for Claude Code MCP configuration with support for both **local** (project-specific) and **global** (all projects) MCP scopes:
 
-- `dotfiles-claude install-mcps` — Install MCP dependencies (context7, github, stackoverflow-mcp, web-forager)
+#### Commands
+
+**Install MCPs from shared registry:**
+- `dotfiles-claude install-mcps` — Install all MCPs locally (current project)
+- `dotfiles-claude install-mcps --global` — Install all MCPs globally (all projects)
+- `dotfiles-claude install-mcps --local` — Install all MCPs locally (explicit)
+
+**Add individual MCPs:**
+- `dotfiles-claude add-local <name>` — Add specific MCP to current project
+- `dotfiles-claude add-global <name>` — Add specific MCP to all projects
+
+**List and sync:**
+- `dotfiles-claude list-available` — List MCPs available in shared registry
+- `dotfiles-claude list` — List currently configured MCPs
 - `dotfiles-claude sync-from-opencode` — Import MCPs from OpenCode config
-- `dotfiles-claude list` — List configured MCP servers
 
-**Environment Variables**: This script automatically sources `~/.profile.local` to load MCP tokens:
+#### MCP Scopes
 
-- `GITHUB_PERSONAL_ACCESS_TOKEN` — For GitHub MCP
-- `STACK_EXCHANGE_API_KEY` — For Stack Overflow MCP
+Claude Code supports three MCP scopes:
 
-### Environment Variable Setup
+1. **Local Scope** (default) — MCPs are only available in the current project
+   - Stored in `~/.claude.json` under project path
+   - Use: Project-specific tools (e.g., a database MCP for one repo)
+
+2. **Global Scope** — MCPs available to all your projects
+   - Stored at root of `~/.claude.json`
+   - Use: Common tools you use everywhere (GitHub, Stack Overflow, etc.)
+
+3. **Project Scope** — Team-shared via `.mcp.json` in project root
+   - Version controlled and shared with team
+   - Use: Team-specific integrations
+
+#### Shared MCP Registry
+
+MCPs are defined in `shared/ai-agents/mcps.json` with metadata:
+- Installation method (npx, pipx, etc.)
+- Required environment variables
+- Categories and descriptions
+
+Available MCPs:
+- `context7` — Library documentation lookup
+- `github` — GitHub operations (requires `GITHUB_PERSONAL_ACCESS_TOKEN`)
+- `stackoverflow-mcp` — Stack Overflow search (requires `STACK_EXCHANGE_API_KEY`)
+- `web-forager` — Web search and content fetching
+- `mcp-atlassian` — Jira/Confluence integration
+- `figma-mcp` — Figma design files
+- `sonarqube-mcp` — Code quality analysis
+
+#### Environment Variable Setup
 
 Add your MCP tokens to `~/.profile.local`:
 
@@ -71,9 +110,15 @@ Add your MCP tokens to `~/.profile.local`:
 # ~/.profile.local
 export GITHUB_PERSONAL_ACCESS_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxx"
 export STACK_EXCHANGE_API_KEY="your_key_here"
+export FIGMA_API_KEY="figd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Atlassian (optional)
+export JIRA_URL="https://your-domain.atlassian.net"
+export JIRA_USERNAME="your.email@example.com"
+export JIRA_API_TOKEN="your_token_here"
 ```
 
-The script will automatically source this file and use the tokens when installing MCPs.
+The script automatically sources `~/.profile.local` and uses these tokens when installing MCPs.
 
 ## Notes
 
