@@ -32,7 +32,20 @@ else
     DOTFILES_DIR="$(dirname "$(dirname "$(dirname "$(dirname "$(dirname "$(cd -- "$(dirname -- "$0")" && pwd)")")")")")"
 fi
 
+# Check for local mcps.json first, then fall back to shared registry
+# Script is at: linux/claude/.local/bin/org.jcchikikomori.agentic.claude/bin/dotfiles-claude
+# mcps.json is at: linux/claude/mcps.json (4 levels up from script)
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+CLAUDE_DIR="$(dirname "$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")")"
+LOCAL_MCPS_FILE="${CLAUDE_DIR}/mcps.json"
 SHARED_MCPS_FILE="${DOTFILES_DIR}/shared/ai-agents/mcps.json"
+
+# Use local mcps.json if it exists, otherwise use shared
+if [ -f "$LOCAL_MCPS_FILE" ]; then
+    MCPS_FILE="$LOCAL_MCPS_FILE"
+else
+    MCPS_FILE="$SHARED_MCPS_FILE"
+fi
 
 # Scope configuration
 SCOPE="local"  # default scope
@@ -72,8 +85,8 @@ _json_tool() {
 _get_mcp_from_registry() {
     mcp_name="$1"
 
-    # Check if shared registry exists
-    if [ ! -f "$SHARED_MCPS_FILE" ]; then
+    # Check if registry exists
+    if [ ! -f "$MCPS_FILE" ]; then
         return 1
     fi
 
@@ -81,14 +94,14 @@ _get_mcp_from_registry() {
 
     case "$json_tool" in
         jq)
-            jq -r --arg name "$mcp_name" '.mcpServers[$name] // empty' "$SHARED_MCPS_FILE" 2>/dev/null
+            jq -r --arg name "$mcp_name" '.mcpServers[$name] // empty' "$MCPS_FILE" 2>/dev/null
             ;;
         python3)
             python3 -c "
 import json
 import sys
 try:
-    with open('$SHARED_MCPS_FILE') as f:
+    with open('$MCPS_FILE') as f:
         data = json.load(f)
     mcp = data.get('mcpServers', {}).get('$mcp_name')
     if mcp:
@@ -104,29 +117,25 @@ except Exception:
 }
 
 _list_available_mcps() {
-    if [ ! -f "$SHARED_MCPS_FILE" ]; then
-        echo "  [warn] Shared MCP registry not found: $SHARED_MCPS_FILE"
-        echo "  [info] Using built-in registry"
-        _get_mcp_registry | cut -d'|' -f1 | while read -r name; do
-            echo "  • $name"
-        done
-        return
+    if [ ! -f "$MCPS_FILE" ]; then
+        echo "  [warn] MCP registry not found: $MCPS_FILE"
+        return 1
     fi
 
     json_tool=$(_json_tool)
 
-    echo "  Available MCPs from shared registry:"
+    echo "  Available MCPs from registry:"
     echo ""
 
     case "$json_tool" in
         jq)
-            jq -r '.mcpServers | to_entries[] | "  • \(.key) - \(.value.description // "No description")"' "$SHARED_MCPS_FILE"
+            jq -r '.mcpServers | to_entries[] | "  • \(.key) - \(.value.description // "No description")"' "$MCPS_FILE"
             ;;
         python3)
             python3 -c "
 import json
 try:
-    with open('$SHARED_MCPS_FILE') as f:
+    with open('$MCPS_FILE') as f:
         data = json.load(f)
     for name, mcp in data.get('mcpServers', {}).items():
         desc = mcp.get('description', 'No description')
@@ -139,18 +148,6 @@ except Exception as e:
             echo "  [warn] No JSON tool available (install jq or python3)"
             ;;
     esac
-}
-
-_get_mcp_registry() {
-    cat <<'EOF'
-context7|npx|npx -y @upstash/context7-mcp|
-github|http|https://api.githubcopilot.com/mcp|GITHUB_PERSONAL_ACCESS_TOKEN
-stackoverflow-mcp|pipx|stackoverflow-mcp|STACK_EXCHANGE_API_KEY
-web-forager|pipx|web-forager serve|
-mcp-atlassian|pipx|mcp-atlassian|JIRA_URL,JIRA_USERNAME,JIRA_API_TOKEN,CONFLUENCE_URL,CONFLUENCE_USERNAME,CONFLUENCE_API_TOKEN
-figma-mcp|npx|npx -y @mcp/figma|FIGMA_API_KEY
-sonarqube-mcp|npx|npx -y @mcp/sonarqube|SONARQUBE_URL,SONARQUBE_TOKEN
-EOF
 }
 
 # ─── MCP helpers ──────────────────────────────────────────────────────────────
@@ -448,6 +445,43 @@ _report_env() {
 
 # ─── MCP dependency installer ─────────────────────────────────────────────────
 
+# Read all MCPs from JSON registry and install them
+_read_mcps_from_json() {
+    if [ ! -f "$MCPS_FILE" ]; then
+        echo "  [error] MCP registry not found: $MCPS_FILE"
+        return 1
+    fi
+
+    json_tool=$(_json_tool)
+
+    case "$json_tool" in
+        jq)
+            jq -r '.mcpServers | to_entries[] | "\(.key)|\(.value.type // "stdio")|\(.value.command) \(.value.args | join(" "))|\(.value.env | join(","))"' "$MCPS_FILE" 2>/dev/null
+            ;;
+        python3)
+            python3 -c "
+import json
+try:
+    with open('$MCPS_FILE') as f:
+        data = json.load(f)
+    for name, mcp in data.get('mcpServers', {}).items():
+        mcp_type = mcp.get('type', 'stdio')
+        cmd = mcp.get('command', '')
+        args = mcp.get('args', [])
+        command = ' '.join([cmd] + args)
+        env = ','.join(mcp.get('env', []))
+        print(f'{name}|{mcp_type}|{command}|{env}')
+except Exception as e:
+    pass
+"
+            ;;
+        *)
+            echo "  [error] No JSON tool available (install jq or python3)"
+            return 1
+            ;;
+    esac
+}
+
 do_install_mcps() {
     echo ""
     echo "[dotfiles-claude] Installing MCP dependencies..."
@@ -465,11 +499,18 @@ do_install_mcps() {
         return 0
     fi
 
+    # Guard: registry must exist
+    if [ ! -f "$MCPS_FILE" ]; then
+        echo "[dotfiles-claude] MCP registry not found: $MCPS_FILE"
+        return 1
+    fi
+
     echo ""
     echo "  Installing MCPs from registry..."
+    echo "  Source: $MCPS_FILE"
     echo ""
 
-    _get_mcp_registry | while IFS= read -r line; do
+    _read_mcps_from_json | while IFS= read -r line; do
         [ -z "$line" ] && continue
         _install_mcp "$line"
     done
