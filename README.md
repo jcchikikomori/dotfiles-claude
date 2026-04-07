@@ -48,7 +48,7 @@ linux/claude/
 
 ## Binary Tools
 
-This package includes management scripts installed to `~/.local/bin/org.jcchikikomori.dotfiles.claude/bin/`:
+This package includes management scripts installed to `~/.local/bin/org.jcchikikomori.agentic.claude/bin/`:
 
 ### `dotfiles-claude`
 
@@ -57,15 +57,18 @@ Main management script for Claude Code MCP configuration with support for both *
 #### Commands
 
 **Install MCPs from shared registry:**
+
 - `dotfiles-claude install-mcps` — Install all MCPs locally (current project)
 - `dotfiles-claude install-mcps --global` — Install all MCPs globally (all projects)
 - `dotfiles-claude install-mcps --local` — Install all MCPs locally (explicit)
 
 **Add individual MCPs:**
+
 - `dotfiles-claude add-local <name>` — Add specific MCP to current project
 - `dotfiles-claude add-global <name>` — Add specific MCP to all projects
 
 **List and sync:**
+
 - `dotfiles-claude list-available` — List MCPs available in shared registry
 - `dotfiles-claude list` — List currently configured MCPs
 - `dotfiles-claude sync-from-opencode` — Import MCPs from OpenCode config
@@ -89,11 +92,13 @@ Claude Code supports three MCP scopes:
 #### Shared MCP Registry
 
 MCPs are defined in `shared/ai-agents/mcps.json` with metadata:
+
 - Installation method (npx, pipx, etc.)
 - Required environment variables
 - Categories and descriptions
 
 Available MCPs:
+
 - `context7` — Library documentation lookup
 - `github` — GitHub operations (requires `GITHUB_PERSONAL_ACCESS_TOKEN`)
 - `stackoverflow-mcp` — Stack Overflow search (requires `STACK_EXCHANGE_API_KEY`)
