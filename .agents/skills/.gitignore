@@ -1,0 +1,5 @@
+# Skills are generated from shared/ai-agents/skills/ by devtools-ai
+# Keep this .gitkeep but ignore actual skill directories
+*/
+!.gitkeep
+!.gitignore
