@@ -223,6 +223,18 @@ _install_mcp() {
                 echo "  [fail]    $mcp_name  failed to add"
             fi
             ;;
+        docker)
+            if ! command -v docker > /dev/null 2>&1; then
+                echo "  [warn]    $mcp_name  needs docker — install Docker first"
+                return 0
+            fi
+            echo "  [add]     $mcp_name  via docker..."
+            if _add_mcp_with_env "$mcp_name" "$mcp_command" "$mcp_env"; then
+                echo "  [done]    $mcp_name  added"
+            else
+                echo "  [fail]    $mcp_name  failed to add"
+            fi
+            ;;
         http)
             echo "  [add]     $mcp_name  (HTTP server)..."
             _add_mcp_http "$mcp_name" "$mcp_command" "$mcp_env"
@@ -254,7 +266,11 @@ _add_mcp_with_env() {
             val=""
             eval "val=\${${key}:-}"
             if [ -n "$val" ]; then
-                env_flags="$env_flags -e $key=$val"
+                if [ -z "$env_flags" ]; then
+                    env_flags="-e $key=$val"
+                else
+                    env_flags="$env_flags -e $key=$val"
+                fi
             fi
             IFS=","
         done
@@ -268,12 +284,13 @@ _add_mcp_with_env() {
         _add_mcp_global "$mcp_name" "$mcp_command" "$mcp_env"
     else
         # Local scope - use CLI
+        # Important: env flags must come AFTER the command, not before
         if [ -n "$env_flags" ]; then
             # shellcheck disable=SC2086
-            claude mcp add $env_flags "$mcp_name" -- $mcp_command 2>&1 | sed 's/^/              /'
+            claude mcp add "$mcp_name" $mcp_command $env_flags 2>&1 | sed 's/^/              /'
         else
             # shellcheck disable=SC2086
-            claude mcp add "$mcp_name" -- $mcp_command 2>&1 | sed 's/^/              /'
+            claude mcp add "$mcp_name" $mcp_command 2>&1 | sed 's/^/              /'
         fi
     fi
 }
@@ -665,17 +682,23 @@ do_add_mcp() {
 
     case "$json_tool" in
         jq)
-            mcp_type=$(echo "$mcp_data" | jq -r '.type // "stdio"')
+            # Check if HTTP or stdio type
+            transport_type=$(echo "$mcp_data" | jq -r '.type // "stdio"')
             mcp_env=$(echo "$mcp_data" | jq -r '(.env | select(. != null) | join(",")) // ""')
-            if [ "$mcp_type" = "http" ]; then
+            
+            if [ "$transport_type" = "http" ]; then
+                mcp_type="http"
                 mcp_url=$(echo "$mcp_data" | jq -r '.url // ""')
                 mcp_command="$mcp_url"
             else
+                # For stdio, use installMethod (npx, pipx, uvx, docker)
+                mcp_type=$(echo "$mcp_data" | jq -r '.installMethod // "stdio"')
                 mcp_command=$(echo "$mcp_data" | jq -r '[.command, .args[]?] | join(" ")')
             fi
             ;;
         python3)
-            mcp_type=$(python3 -c "
+            # Check transport type first
+            transport_type=$(python3 -c "
 import json
 data = json.loads('$mcp_data')
 print(data.get('type', 'stdio'))
@@ -686,7 +709,8 @@ data = json.loads('$mcp_data')
 env = data.get('env', [])
 print(','.join(env) if env else '')
 ")
-            if [ "$mcp_type" = "http" ]; then
+            if [ "$transport_type" = "http" ]; then
+                mcp_type="http"
                 mcp_url=$(python3 -c "
 import json
 data = json.loads('$mcp_data')
@@ -694,6 +718,12 @@ print(data.get('url', ''))
 ")
                 mcp_command="$mcp_url"
             else
+                # For stdio, use installMethod (npx, pipx, uvx, docker)
+                mcp_type=$(python3 -c "
+import json
+data = json.loads('$mcp_data')
+print(data.get('installMethod', 'stdio'))
+")
                 mcp_command=$(python3 -c "
 import json
 import sys
