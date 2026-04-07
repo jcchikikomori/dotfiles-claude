@@ -1,6 +1,13 @@
-# dotfiles-claude
+# Claude Code Configuration
 
 Claude Code configuration for dotfiles (stow package).
+
+> **Part of [jcchikikomori/.dotfiles](https://github.com/jcchikikomori/.dotfiles)** — A standalone package containing [opencode](https://opencode.ai) configuration files that are stowed to `~/.config/opencode/`.
+
+[![License: AI-Restricted MIT](https://img.shields.io/badge/License-AI--Restricted%20MIT-yellow.svg)](LICENSE)
+[![dotfiles](https://img.shields.io/badge/dotfiles-jcchikikomori-blue.svg)](https://github.com/jcchikikomori/.dotfiles)
+
+---
 
 ## Overview
 
@@ -8,7 +15,7 @@ This stow package provides Claude Code AI coding agent configuration. Skills and
 
 ## Structure
 
-```
+```bash
 linux/claude/
 ├── .claude/
 │   ├── settings.json      # Claude Code settings (user-managed, not in repo)
@@ -21,17 +28,20 @@ linux/claude/
 ## Usage
 
 1. **Stow the package** (done automatically by `stowme.sh`):
+
    ```bash
    cd ~/.dotfiles
    dotstow stow claude
    ```
 
 2. **Sync shared configs**:
+
    ```bash
    devtools-ai sync
    ```
 
 3. **Check sync status**:
+
    ```bash
    devtools-ai status
    ```
@@ -41,12 +51,15 @@ linux/claude/
 This package includes management scripts installed to `~/.local/bin/org.jcchikikomori.dotfiles.claude/bin/`:
 
 ### `dotfiles-claude`
+
 Main management script for Claude Code MCP configuration:
+
 - `dotfiles-claude install-mcps` — Install MCP dependencies (context7, github, stackoverflow-mcp, web-forager)
 - `dotfiles-claude sync-from-opencode` — Import MCPs from OpenCode config
 - `dotfiles-claude list` — List configured MCP servers
 
 **Environment Variables**: This script automatically sources `~/.profile.local` to load MCP tokens:
+
 - `GITHUB_PERSONAL_ACCESS_TOKEN` — For GitHub MCP
 - `STACK_EXCHANGE_API_KEY` — For Stack Overflow MCP
 
