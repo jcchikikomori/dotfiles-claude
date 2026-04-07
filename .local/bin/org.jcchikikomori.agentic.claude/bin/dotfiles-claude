@@ -144,9 +144,12 @@ except Exception as e:
 _get_mcp_registry() {
     cat <<'EOF'
 context7|npx|npx -y @upstash/context7-mcp|
-github|npx|npx -y @modelcontextprotocol/server-github|GITHUB_PERSONAL_ACCESS_TOKEN
+github|http|https://api.githubcopilot.com/mcp|GITHUB_PERSONAL_ACCESS_TOKEN
 stackoverflow-mcp|pipx|stackoverflow-mcp|STACK_EXCHANGE_API_KEY
 web-forager|pipx|web-forager serve|
+mcp-atlassian|pipx|mcp-atlassian|JIRA_URL,JIRA_USERNAME,JIRA_API_TOKEN,CONFLUENCE_URL,CONFLUENCE_USERNAME,CONFLUENCE_API_TOKEN
+figma-mcp|npx|npx -y @mcp/figma|FIGMA_API_KEY
+sonarqube-mcp|npx|npx -y @mcp/sonarqube|SONARQUBE_URL,SONARQUBE_TOKEN
 EOF
 }
 
@@ -225,11 +228,7 @@ _install_mcp() {
             ;;
         http)
             echo "  [add]     $mcp_name  (HTTP server)..."
-            if claude mcp add --transport http "$mcp_name" "$mcp_command" 2>&1 | sed 's/^/              /'; then
-                echo "  [done]    $mcp_name  added"
-            else
-                echo "  [fail]    $mcp_name  failed to add"
-            fi
+            _add_mcp_http "$mcp_name" "$mcp_command" "$mcp_env"
             ;;
         *)
             echo "  [skip]    $mcp_name  (unknown type: $mcp_type)"
@@ -381,6 +380,46 @@ EOF
     fi
 
     echo "              Added to global config (~/.claude.json)"
+}
+
+# Add HTTP MCP using claude mcp add-json command
+# Usage: _add_mcp_http <name> <url> <env_keys>
+_add_mcp_http() {
+    mcp_name="$1"
+    mcp_url="$2"
+    mcp_env="$3"
+    
+    # Get token from environment
+    token=""
+    if [ -n "$mcp_env" ]; then
+        # Assume first env var is the token
+        key=$(echo "$mcp_env" | cut -d',' -f1)
+        eval "token=\${${key}:-}"
+    fi
+    
+    if [ -z "$token" ]; then
+        echo "              [error] No token found for $mcp_name"
+        echo "              Set $mcp_env in ~/.profile.local"
+        return 1
+    fi
+    
+    # Build JSON configuration
+    json_config="{\"type\": \"http\", \"url\": \"$mcp_url\", \"headers\": {\"Authorization\": \"Bearer $token\"}}"
+    
+    # Add scope flag if global
+    scope_flag=""
+    if [ "$SCOPE" = "global" ]; then
+        scope_flag="--scope user"
+    fi
+    
+    # Use claude mcp add-json command
+    # shellcheck disable=SC2086
+    if claude mcp add-json $scope_flag "$mcp_name" "$json_config" 2>&1 | sed 's/^/              /'; then
+        echo "  [done]    $mcp_name added ($SCOPE scope)"
+    else
+        echo "  [fail]    $mcp_name failed to add"
+        return 1
+    fi
 }
 
 # Report ENV status
@@ -558,18 +597,20 @@ do_add_mcp() {
 
     case "$json_tool" in
         jq)
-            mcp_command=$(echo "$mcp_data" | jq -r '[.command, .args[]?] | join(" ")')
-            mcp_env=$(echo "$mcp_data" | jq -r '(.env | select(. != null) | join(",")) // ""')
             mcp_type=$(echo "$mcp_data" | jq -r '.type // "stdio"')
+            mcp_env=$(echo "$mcp_data" | jq -r '(.env | select(. != null) | join(",")) // ""')
+            if [ "$mcp_type" = "http" ]; then
+                mcp_url=$(echo "$mcp_data" | jq -r '.url // ""')
+                mcp_command="$mcp_url"
+            else
+                mcp_command=$(echo "$mcp_data" | jq -r '[.command, .args[]?] | join(" ")')
+            fi
             ;;
         python3)
-            mcp_command=$(python3 -c "
+            mcp_type=$(python3 -c "
 import json
-import sys
 data = json.loads('$mcp_data')
-cmd = data.get('command', '')
-args = data.get('args', [])
-print(' '.join([cmd] + args))
+print(data.get('type', 'stdio'))
 ")
             mcp_env=$(python3 -c "
 import json
@@ -577,11 +618,23 @@ data = json.loads('$mcp_data')
 env = data.get('env', [])
 print(','.join(env) if env else '')
 ")
-            mcp_type=$(python3 -c "
+            if [ "$mcp_type" = "http" ]; then
+                mcp_url=$(python3 -c "
 import json
 data = json.loads('$mcp_data')
-print(data.get('type', 'stdio'))
+print(data.get('url', ''))
 ")
+                mcp_command="$mcp_url"
+            else
+                mcp_command=$(python3 -c "
+import json
+import sys
+data = json.loads('$mcp_data')
+cmd = data.get('command', '')
+args = data.get('args', [])
+print(' '.join([cmd] + args))
+")
+            fi
             ;;
         *)
             echo "[dotfiles-claude] Error: jq or python3 required to parse MCP registry"
