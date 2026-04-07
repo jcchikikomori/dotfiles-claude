@@ -36,8 +36,35 @@ linux/claude/
    devtools-ai status
    ```
 
+## Binary Tools
+
+This package includes management scripts installed to `~/.local/bin/org.jcchikikomori.dotfiles.claude/bin/`:
+
+### `dotfiles-claude`
+Main management script for Claude Code MCP configuration:
+- `dotfiles-claude install-mcps` — Install MCP dependencies (context7, github, stackoverflow-mcp, web-forager)
+- `dotfiles-claude sync-from-opencode` — Import MCPs from OpenCode config
+- `dotfiles-claude list` — List configured MCP servers
+
+**Environment Variables**: This script automatically sources `~/.profile.local` to load MCP tokens:
+- `GITHUB_PERSONAL_ACCESS_TOKEN` — For GitHub MCP
+- `STACK_EXCHANGE_API_KEY` — For Stack Overflow MCP
+
+### Environment Variable Setup
+
+Add your MCP tokens to `~/.profile.local`:
+
+```bash
+# ~/.profile.local
+export GITHUB_PERSONAL_ACCESS_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxx"
+export STACK_EXCHANGE_API_KEY="your_key_here"
+```
+
+The script will automatically source this file and use the tokens when installing MCPs.
+
 ## Notes
 
 - `CLAUDE.md` and skills are **generated** by `devtools-ai sync` from `shared/ai-agents/`
 - `settings.json` contains AWS Bedrock config and should be managed separately
 - Generated files are `.gitignore`d in this submodule
+- Skills are synced to `~/.claude/skills/` (not `~/.agents/skills/`) for Claude Code compatibility
