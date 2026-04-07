@@ -69,6 +69,10 @@ Main management script for Claude Code MCP configuration with support for both *
 - `dotfiles-claude add-local <name>` — Add specific MCP to current project
 - `dotfiles-claude add-global <name>` — Add specific MCP to all projects
 
+**Manage instructions:**
+
+- `dotfiles-claude generate-instructions` — Generate CLAUDE.md from shared source
+
 **List and sync:**
 
 - `dotfiles-claude list-available` — List MCPs available in shared registry
@@ -95,19 +99,39 @@ Claude Code supports three MCP scopes:
 
 MCPs are defined in `shared/ai-agents/mcps.json` with metadata:
 
-- Installation method (npx, pipx, etc.)
+- Installation method (npx, pipx, uvx, docker, http)
 - Required environment variables
 - Categories and descriptions
 
+The `dotfiles-claude` script dynamically reads from:
+1. Local `linux/claude/mcps.json` (if it exists)
+2. Shared `shared/ai-agents/mcps.json` (fallback)
+
+This allows Claude Code to maintain its own registry while sharing common MCPs.
+
 Available MCPs:
 
-- `context7` — Library documentation lookup (stdio via npx)
-- `github` — GitHub operations via official GitHub MCP server (HTTP transport, requires `GITHUB_PERSONAL_ACCESS_TOKEN`)
-- `stackoverflow-mcp` — Stack Overflow search (stdio via pipx, requires `STACK_EXCHANGE_API_KEY`)
-- `web-forager` — Web search and content fetching (stdio via pipx)
-- `mcp-atlassian` — Jira/Confluence integration (stdio via pipx)
-- `figma-mcp` — Figma design files (stdio via npx)
-- `sonarqube-mcp` — Code quality analysis (stdio via npx)
+**Core MCPs:**
+- `context7` — Library documentation lookup (HTTP)
+- `github` — GitHub operations via official GitHub MCP server (HTTP, requires `GITHUB_PERSONAL_ACCESS_TOKEN`)
+- `stackoverflow-mcp` — Stack Overflow search (pipx, requires `STACK_EXCHANGE_API_KEY`)
+- `web-forager` — Web search and content fetching (pipx)
+
+**Integration MCPs:**
+- `mcp-atlassian` — Jira/Confluence integration (pipx, requires Atlassian credentials)
+- `figma-mcp` — Figma design files (npx, requires `FIGMA_API_KEY`)
+- `sonarqube-mcp` — Code quality analysis (Docker, requires `SONARQUBE_URL` and `SONARQUBE_TOKEN`)
+- `buildkite-mcp` — CI/CD pipeline integration (HTTP)
+
+**Development MCPs:**
+- `chrome-devtools` — Browser automation and testing (npx)
+- `github-mcp-docker` — Docker-based GitHub alternative (Docker)
+- `figma-developer-mcp` — Alternative Figma implementation (npx)
+
+**Document Processing MCPs:**
+- `markitdown-mcp` — Convert various formats (PDF, DOCX, PPTX, XLSX, images with OCR, audio with transcription, HTML, etc.) to Markdown (uvx, requires Python 3.10+)
+- `markdownlint-mcp` — Lint and auto-fix Markdown files with 30/52 rules (npx)
+- `mcp-ocr` — Extract text from images using Tesseract OCR (pipx)
 
 **Note:** MCPs use different transports:
 

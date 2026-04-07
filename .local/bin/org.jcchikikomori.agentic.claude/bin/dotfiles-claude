@@ -704,6 +704,46 @@ do_list_available() {
     echo ""
 }
 
+# ─── Instruction generator ────────────────────────────────────────────────────
+
+do_generate_instructions() {
+    echo ""
+    echo "[dotfiles-claude] Generating CLAUDE.md from shared instructions..."
+    
+    # Determine dotfiles path
+    if [ -n "${DOTFILES_PATH:-}" ]; then
+        DOTFILES_DIR="$DOTFILES_PATH"
+    elif [ -d "$HOME/.dotfiles" ]; then
+        DOTFILES_DIR="$HOME/.dotfiles"
+    else
+        echo "[dotfiles-claude] Cannot locate dotfiles directory"
+        echo "  Set DOTFILES_PATH or ensure ~/.dotfiles exists"
+        return 1
+    fi
+    
+    SHARED_INSTRUCTIONS="${DOTFILES_DIR}/shared/ai-agents/instructions/global.md"
+    OUTPUT_FILE="$HOME/.claude/CLAUDE.md"
+    
+    # Check if source exists
+    if [ ! -f "$SHARED_INSTRUCTIONS" ]; then
+        echo "[dotfiles-claude] Shared instructions not found: $SHARED_INSTRUCTIONS"
+        return 1
+    fi
+    
+    # Create config directory if needed
+    mkdir -p "$(dirname "$OUTPUT_FILE")"
+    
+    # Copy instructions
+    cp "$SHARED_INSTRUCTIONS" "$OUTPUT_FILE"
+    
+    echo "  [done] Generated: $OUTPUT_FILE"
+    echo "  Source: $SHARED_INSTRUCTIONS"
+    echo ""
+    echo "  This file is auto-generated. Edit the shared source instead:"
+    echo "  $SHARED_INSTRUCTIONS"
+    echo ""
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 usage() {
@@ -716,12 +756,14 @@ usage() {
     echo "  list-available                    List MCPs available in shared registry"
     echo "  list                              List currently configured MCPs"
     echo "  sync-from-opencode                Import MCPs from OpenCode config"
+    echo "  generate-instructions             Generate CLAUDE.md from shared instructions"
     echo ""
     echo "Examples:"
     echo "  dotfiles-claude install-mcps              # Install all MCPs locally"
     echo "  dotfiles-claude install-mcps --global     # Install all MCPs globally"
     echo "  dotfiles-claude add-global github         # Add GitHub MCP globally"
     echo "  dotfiles-claude add-local context7        # Add Context7 MCP locally"
+    echo "  dotfiles-claude generate-instructions     # Generate CLAUDE.md"
     echo ""
     echo "Environment variables are read from ~/.profile.local"
 }
@@ -753,6 +795,9 @@ case "${1:-}" in
         ;;
     list)
         do_list
+        ;;
+    generate-instructions)
+        do_generate_instructions
         ;;
     help|--help|-h)
         usage
