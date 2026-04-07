@@ -2,7 +2,7 @@
 
 Claude Code configuration for dotfiles (stow package).
 
-> **Part of [jcchikikomori/.dotfiles](https://github.com/jcchikikomori/.dotfiles)** — A standalone package containing [opencode](https://opencode.ai) configuration files that are stowed to `~/.config/opencode/`.
+> **Part of [jcchikikomori/.dotfiles](https://github.com/jcchikikomori/.dotfiles)** — A standalone package containing [claude](https://claude.ai) configuration files that are stowed to `~/.config/claude/`.
 
 [![License: AI-Restricted MIT](https://img.shields.io/badge/License-AI--Restricted%20MIT-yellow.svg)](LICENSE)
 [![dotfiles](https://img.shields.io/badge/dotfiles-jcchikikomori-blue.svg)](https://github.com/jcchikikomori/.dotfiles)
@@ -71,7 +71,7 @@ Main management script for Claude Code MCP configuration with support for both *
 
 - `dotfiles-claude list-available` — List MCPs available in shared registry
 - `dotfiles-claude list` — List currently configured MCPs
-- `dotfiles-claude sync-from-opencode` — Import MCPs from OpenCode config
+- `dotfiles-claude sync-from-claude` — Import MCPs from OpenCode config
 
 #### MCP Scopes
 
