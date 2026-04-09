@@ -1,6 +1,3 @@
-# Claude Code generated files (created by devtools-ai sync)
-CLAUDE.md
-
 # Skills are generated from shared/ai-agents/skills/
 # Keep .gitkeep but ignore actual skill directories
 .agents/skills/*/
