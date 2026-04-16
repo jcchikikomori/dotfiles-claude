@@ -68,6 +68,16 @@ cd dotfiles-claude
 cp -r .claude ~/
 ```
 
+## Manual skills setup
+
+You may try this my personally crafted skills repository,
+by using your favorite Terminal again...
+
+```bash
+claude plugin marketplace add jcchikikomori/skills-md
+claude plugin install skills@skills-md
+```
+
 ## My go-to MCPs
 
 **Core MCPs:**
@@ -101,7 +111,7 @@ cp -r .claude ~/
 - **HTTP** — Connects to remote servers (e.g., GitHub's official MCP at `api.githubcopilot.com`)
 - **stdio** — Runs local binaries (most other MCPs)
 
-#### Environment Variable Setup
+### Environment Variable Setup
 
 Add your MCP personal tokens to `~/.profile` or `~/.bashrc` or `~/.zshrc`:
 
