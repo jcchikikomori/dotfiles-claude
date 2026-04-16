@@ -92,12 +92,6 @@ Users can invoke skills directly with `/skill-name` (e.g., `/git`, `/docker`, `/
 - Target code coverage ≥95%.
 - Prioritize positive & negative test cases.
 
-## Pull Request Standards
-
-- **PR size ≤ 200 lines** (unless no reasonable simplification possible).
-- **Limited scope:** Only changes for the ticket/story (no unrelated refactoring).
-- **Short description** or dot points explaining the changes.
-
 ## Database Practices (Mandatory)
 
 - Avoid **N+1 queries**.
