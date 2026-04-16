@@ -1,0 +1,83 @@
+{
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "stackoverflow-mcp": {
+      "type": "http",
+      "url": "https://mcp.stackoverflow.com"
+    },
+    "web-forager": {
+      "command": "uvx",
+      "args": ["web-forager", "serve"],
+      "env": {}
+    },
+    "mcp-atlassian": {
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": {
+        "JIRA_URL": "${JIRA_URL}",
+        "JIRA_USERNAME": "${JIRA_USERNAME}",
+        "JIRA_API_TOKEN": "${JIRA_API_TOKEN}",
+        "CONFLUENCE_URL": "${CONFLUENCE_URL}",
+        "CONFLUENCE_USERNAME": "${CONFLUENCE_USERNAME}",
+        "CONFLUENCE_API_TOKEN": "${CONFLUENCE_API_TOKEN}"
+      }
+    },
+    "figma-mcp": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    },
+    "sonarqube-mcp": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--init",
+        "--pull=always",
+        "-i",
+        "--rm",
+        "-e",
+        "SONARQUBE_TOKEN",
+        "-e",
+        "SONARQUBE_URL",
+        "mcp/sonarqube"
+      ],
+      "env": {
+        "SONARQUBE_URL": "${SONARQUBE_URL}",
+        "SONARQUBE_TOKEN": "${SONARQUBE_TOKEN}"
+      }
+    },
+    "buildkite-mcp": {
+      "type": "http",
+      "url": "https://mcp.buildkite.com/mcp"
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"],
+      "env": {}
+    },
+    "mcp-ocr": {
+      "command": "uvx",
+      "args": ["mcp-ocr"],
+      "env": {}
+    },
+    "markitdown-mcp": {
+      "command": "uvx",
+      "args": ["markitdown-mcp"],
+      "env": {}
+    },
+    "markdownlint-mcp": {
+      "command": "npx",
+      "args": ["-y", "markdownlint-mcp"],
+      "env": {}
+    }
+  }
+}
