@@ -96,6 +96,7 @@ claude plugin install skills@skills-md
 
 **Development MCPs:**
 
+- `camoufox` — Browser automation via Camoufox privacy-focused Firefox fork (npx)
 - `chrome-devtools` — Browser automation and testing (npx)
 - `github-mcp-docker` — Docker-based GitHub alternative (Docker)
 - `figma-developer-mcp` — Alternative Figma implementation (npx)
