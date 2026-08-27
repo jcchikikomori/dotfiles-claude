@@ -1,0 +1,31 @@
+# Comments and blank lines are allowed.
+
+RCS
+.+,v
+
+CVS
+\.\#.+       # CVS conflict files / emacs lock files
+\.cvsignore
+
+\.svn
+_darcs
+\.hg
+
+\.git
+\.gitignore
+
+.+~          # emacs backup files
+\#.*\#       # emacs autosave files
+
+^/README.*
+^/LICENSE.*
+^/COPYING
+
+# Repo-own tooling, not a $HOME dotfile: this file lints the
+# dotfiles-claude repo itself, distinct from linux/git's own
+# .pre-commit-config.yaml which IS meant for $HOME.
+^/\.pre-commit-config\.yaml$
+
+# Local runtime state from the Remember plugin, never meant to
+# land in $HOME as a symlink target.
+^/\.remember$
