@@ -62,7 +62,3 @@ pre-commit run --all-files
 ## Known Gaps
 
 - `.claude/rules/*.md` are stubs with `TODO` bodies. Fill them from the matching `skills-md` skill.
-- `.claude/rules/coding-rules-nodejs.md` is scoped to `**/*.html`. It probably needs JS/TS globs.
-- `accesibility-web.md` has a misspelled filename (`accesibility`).
-- README says the package stows to `~/.config/claude/`, but setup copies to `~/.claude` and the stow commit targets
-  `$HOME`. Treat `~/.claude` as the real target.

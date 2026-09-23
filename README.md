@@ -2,7 +2,7 @@
 
 Claude Code configuration for dotfiles (stow package).
 
-> **Part of [jcchikikomori/.dotfiles](https://github.com/jcchikikomori/.dotfiles)** — A standalone package containing [claude](https://claude.ai) configuration files that are stowed to `~/.config/claude/`.
+> **Part of [jcchikikomori/.dotfiles](https://github.com/jcchikikomori/.dotfiles)** — A standalone package containing [claude](https://claude.ai) configuration files that are stowed to `~/.claude/`.
 
 [![License: AI-Restricted MIT](https://img.shields.io/badge/License-AI--Restricted%20MIT-yellow.svg)](LICENSE)
 [![dotfiles](https://img.shields.io/badge/dotfiles-jcchikikomori-blue.svg)](https://github.com/jcchikikomori/.dotfiles)
@@ -17,7 +17,7 @@ This standalone package provides my personal Claude Code configuration.
 
 ### Essential Dependencies
 
-The `dotfiles-claude` script requires:
+This package requires:
 
 - **Claude Code CLI** — The official Claude Code command-line interface
   - Install: <https://docs.anthropic.com/en/docs/claude-code>
@@ -43,15 +43,19 @@ For MCP installation, you may need:
   - Install: <https://docs.docker.com/get-docker/>
   - Check: `docker --version`
 
-This will show which dependencies are installed and which are missing.
-
 ## Structure
 
 ```bash
-linux/claude/
+dotfiles-claude/
 ├── .claude/
-│   ├── skills            # Your skills
-│   └── CLAUDE.md         # System-wide instructions
+│   ├── CLAUDE.md         # System-wide instructions (~/.claude/CLAUDE.md)
+│   ├── .mcp.json         # MCP server definitions
+│   ├── commands/         # Custom slash commands
+│   ├── output-styles/    # Custom output styles
+│   └── rules/            # Path-scoped rules (loaded by `paths:` globs)
+├── bin/
+│   └── install-custom-spinner-verbs  # Adds spinner verbs to ~/.claude/settings.json
+├── CLAUDE.md             # Instructions for working on this repo (not stowed)
 └── README.md
 ```
 
@@ -66,6 +70,20 @@ git clone https://github.com/jcchikikomori/dotfiles-claude.git
 cd dotfiles-claude
 # Then copy the .claude folder from inside into the $HOME directory
 cp -r .claude ~/
+```
+
+Or symlink it with [GNU Stow](https://www.gnu.org/software/stow/) from the parent directory.
+`.stow-local-ignore` keeps repo metadata (`README.md`, `CLAUDE.md`, `.pre-commit-config.yaml`) out of `$HOME`.
+
+```bash
+cd ..
+stow -t "$HOME" dotfiles-claude
+```
+
+Optionally, install the custom spinner verbs (requires `jq`):
+
+```bash
+bin/install-custom-spinner-verbs
 ```
 
 ## Manual skills setup
