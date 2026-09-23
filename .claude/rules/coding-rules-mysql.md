@@ -5,8 +5,9 @@ paths:
 
 # MySQL Coding Rules
 
-Apply this file when the project uses MySQL or MariaDB. For another database, ignore the dialect-specific lines. The
-project's migration tool, conventions, and CLAUDE.md win over these rules.
+Apply this file when the project uses MySQL or MariaDB. Check the database config (`database.yml` adapter, the
+`docker-compose.yml` image, the `DATABASE_URL` scheme) first. For another database, ignore the dialect-specific lines.
+The project's migration tool, conventions, and CLAUDE.md win over these rules.
 
 ## Queries
 
