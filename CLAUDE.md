@@ -24,6 +24,10 @@ stow -t "$HOME" dotfiles-claude
 # Or the manual copy described in README.md
 cp -r .claude ~/
 
+# Required: skills-md plugin (rules and .claude/CLAUDE.md reference its skills)
+claude plugin marketplace add jcchikikomori/llm-agent-workflow
+claude plugin install skills-md@llm-agent-workflow
+
 # Optional: custom spinner verbs, merged into ~/.claude/settings.json
 bin/install-custom-spinner-verbs
 

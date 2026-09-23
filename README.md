@@ -23,6 +23,12 @@ This package requires:
   - Install: <https://docs.anthropic.com/en/docs/claude-code>
   - Check: `claude --version`
 
+- **[skills-md](https://github.com/jcchikikomori/skills-md) plugin** — The rules in `.claude/rules/` point to
+  `skills-md:*` skills (for example `skills-md:ruby-on-rails`) in their `See Also` sections, and the global
+  `CLAUDE.md` auto-loads skills such as `git`, `debug`, and `owasp`. Without the plugin, those references do not
+  resolve. See [Skills setup](#skills-setup).
+  - Check: `claude plugin list | grep skills-md`
+
 ### Optional Dependencies
 
 For MCP installation, you may need:
@@ -86,14 +92,14 @@ Optionally, install the custom spinner verbs (requires `jq`):
 bin/install-custom-spinner-verbs
 ```
 
-## Manual skills setup
+## Skills setup
 
-You may try this my personally crafted skills repository,
-by using your favorite Terminal again...
+The [skills-md](https://github.com/jcchikikomori/skills-md) plugin is required. It is published through the
+[llm-agent-workflow](https://github.com/jcchikikomori/llm-agent-workflow) marketplace, not from its own repository:
 
 ```bash
-claude plugin marketplace add jcchikikomori/skills-md
-claude plugin install skills@skills-md
+claude plugin marketplace add jcchikikomori/llm-agent-workflow
+claude plugin install skills-md@llm-agent-workflow
 ```
 
 ## My go-to MCPs
