@@ -21,6 +21,10 @@ _darcs
 ^/LICENSE.*
 ^/COPYING
 
+# Repo-maintenance instructions for Claude, not a $HOME dotfile:
+# a ~/CLAUDE.md would load into every project under $HOME.
+^/CLAUDE\.md$
+
 # Repo-own tooling, not a $HOME dotfile: this file lints the
 # dotfiles-claude repo itself, distinct from linux/git's own
 # .pre-commit-config.yaml which IS meant for $HOME.
