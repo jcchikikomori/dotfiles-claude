@@ -1,7 +1,7 @@
 ---
 paths:
   - "**/*.html"
-  - "**/*.erb"
+  - "**/*.{erb,haml}"
   - "**/*.liquid"
   - "**/*.{jsx,tsx}"
   - "**/*.vue"

@@ -1,7 +1,7 @@
 ---
 paths:
   - "**/*.html"
-  - "**/*.erb"
+  - "**/*.{erb,haml}"
   - "**/*.liquid"
 ---
 
@@ -39,7 +39,7 @@ The project's existing templates, linters, and CLAUDE.md win over these rules. A
 - Associate a `<label>` with every input.
 - Use the correct input `type` and `autocomplete` value.
 
-## Templates (ERB, Liquid)
+## Templates (ERB, HAML, Liquid)
 
 - Keep output escaping on by default.
 - Keep business logic out of templates. Move it to helpers, presenters, or includes.
