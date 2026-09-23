@@ -58,7 +58,5 @@ pre-commit run --all-files
 - **Commits:** Conventional Commits, enforced by the commitizen `commit-msg` hook. Scopes seen so far: `stow`,
   `spinner`, `claude`.
 - **Git:** Claude drafts commit messages; the user commits and pushes.
-
-## Known Gaps
-
-- `.claude/rules/*.md` are stubs with `TODO` bodies. Fill them from the matching `skills-md` skill.
+- **Rules files:** keep each `.claude/rules/*.md` lean (~25–50 lines of checkable imperatives) and end with a
+  `See Also` link to the owning `skills-md` skill. Do not repeat what `.claude/CLAUDE.md` already covers.
