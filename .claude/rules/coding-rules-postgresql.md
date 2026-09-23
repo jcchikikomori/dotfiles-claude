@@ -49,6 +49,24 @@ The project's migration tool, conventions, and CLAUDE.md win over these rules.
 - Add foreign keys and `CHECK`s on large tables as `NOT VALID`, then run `VALIDATE CONSTRAINT` in a separate step.
 - Keep one logical change per migration. Use `IF NOT EXISTS` / `IF EXISTS` in raw SQL migrations.
 
+## Transactions
+
+- DDL is transactional. Wrap multi-step migrations in one `BEGIN` ... `COMMIT`, except `CONCURRENTLY` steps.
+- Any error aborts the whole transaction, and every later statement fails until `ROLLBACK`. Use a `SAVEPOINT` before
+  a step that may fail.
+- Retry on SQLSTATE `40001` (serialization failure) and `40P01` (deadlock).
+- Set `statement_timeout` and `idle_in_transaction_session_timeout` for app roles, so stuck sessions release locks.
+
+## Functions and Procedures
+
+- Use `CREATE FUNCTION` to return values. Use `CREATE PROCEDURE` (PostgreSQL 11+) only when the body must
+  `COMMIT`. That works only when called with `CALL` outside an outer transaction block.
+- Raise errors with `RAISE EXCEPTION '...' USING ERRCODE = '...'`.
+- Keep `BEGIN ... EXCEPTION` blocks out of tight loops. Each one opens a subtransaction.
+- Build dynamic SQL with `EXECUTE format('... %I ...', name) USING value`: `%I` quotes identifiers, `USING` binds
+  values.
+- Add `SET search_path = <schema>, pg_temp` to every `SECURITY DEFINER` function.
+
 ## Security
 
 - Connect as a least-privilege role, never as a superuser. Grant only what each role needs.

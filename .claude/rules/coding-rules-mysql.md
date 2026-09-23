@@ -37,9 +37,24 @@ The project's migration tool, conventions, and CLAUDE.md win over these rules.
 - Name objects consistently: `idx_<table>_<columns>`, `uk_<table>_<columns>`, `fk_<table>_<ref_table>`.
 - Alter large tables with `ALGORITHM=INSTANT` or `INPLACE`, or an online tool (gh-ost, pt-online-schema-change).
 
-## Transactions and Security
+## Transactions
 
-- Wrap multi-statement writes in `START TRANSACTION` and `COMMIT`, with `ROLLBACK` on error. Keep them short.
+- Start with `START TRANSACTION`. `autocommit` is on by default, so each bare statement commits by itself.
+- Keep transactional tables on InnoDB. MyISAM ignores `ROLLBACK`.
+- DDL commits implicitly, so a migration cannot roll back a half-applied `ALTER`.
+- The default isolation is `REPEATABLE READ`, with gap locks. Consider `READ COMMITTED` for high-contention writes.
+- Retry on error 1213 (deadlock) and 1205 (lock wait timeout).
+
+## Stored Procedures
+
+- Set `DELIMITER //` before a procedure in scripts, and reset it afterwards.
+- Roll back and re-raise with `DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;`.
+- Raise errors with `SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '...'`.
+- Declare `SQL SECURITY INVOKER` unless the procedure must run with the definer's rights.
+- Run dynamic SQL with `PREPARE ... FROM`, then `EXECUTE ... USING`, then `DEALLOCATE PREPARE`.
+
+## Upserts and Security
+
 - Use `INSERT ... ON DUPLICATE KEY UPDATE` for upserts. On MySQL 8.0.19+, use the row alias, not `VALUES()`.
 - Grant app users only the privileges they need, on specific schemas. Never grant `ALL PRIVILEGES` or `SUPER`.
 
